@@ -31,17 +31,18 @@ Use the DNS name `unreadlines.com` later as an alternate UPN suffix for Microsof
 
 ## Initial Manual Preparation
 
-Before starting the PowerShell procedure, perform the following actions manually in the Windows Server console:
+Before starting the PowerShell procedure, perform the following actions manually in the Windows Server console. Do not configure a temporary second IPv4 address.
 
-1. Configure the temporary IPv4 address and subnet mask manually:
-   - IPv4 address: `192.168.20.11`
-   - Subnet mask: `255.255.255.0` (`/24`)
-   - Default gateway: `192.168.20.2`
-   - DNS server: `192.168.20.2`
-2. Enable Remote Desktop manually so the server can be administered through mRemoteNG.
-3. Connect to the server with mRemoteNG and continue the remaining steps in an elevated PowerShell session.
+1. Configure the final IPv4 address and subnet mask manually:
+    - IPv4 address: `192.168.20.41`
+    - Subnet mask: `255.255.255.0` (`/24`)
+    - Default gateway: `192.168.20.2`
+    - Temporary DNS server before AD DS/DNS installation: `192.168.20.2`
+2. Configure the final computer name manually: `U01PARVMDOM01`.
+3. Enable Remote Desktop manually so the server can be administered through mRemoteNG.
+4. Connect to the server with mRemoteNG and continue the remaining steps in an elevated PowerShell session.
 
-The temporary address is used only for initial administration. Change it to the final address `192.168.20.41` before promoting the server to a domain controller.
+The IPv4 address is final from the beginning. Only the client DNS setting changes after AD DS/DNS installation: it changes from the upstream DNS server `192.168.20.2` to the local DNS service `192.168.20.41`.
 
 ## Functional Levels and AD Schema
 
@@ -69,82 +70,7 @@ The schema is forest-wide and should be extended only after testing application 
 
 Run PowerShell as Administrator.
 
-## 1. Configure the Static IPv4 Address
-
-First identify the connected network adapter. Do not assume that its alias is `Ethernet`.
-
-```powershell
-Get-NetAdapter |
-    Where-Object Status -eq "Up" |
-    Select-Object Name, InterfaceIndex, Status, MacAddress
-```
-
-Set the adapter alias returned by the previous command:
-
-```powershell
-$InterfaceAlias = "<ACTIVE_INTERFACE_ALIAS>"
-```
-
-Configure the static address:
-
-```powershell
-Set-NetIPInterface `
-    -InterfaceAlias $InterfaceAlias `
-    -Dhcp Disabled
-
-Get-NetIPAddress `
-    -InterfaceAlias $InterfaceAlias `
-    -AddressFamily IPv4 |
-    Where-Object PrefixOrigin -eq "Dhcp" |
-    Remove-NetIPAddress `
-    -Confirm:$false
-
-New-NetIPAddress `
-    -InterfaceAlias $InterfaceAlias `
-    -IPAddress "192.168.20.41" `
-    -PrefixLength 24 `
-    -DefaultGateway "192.168.20.2"
-```
-
-Before DNS is installed, use the upstream DNS server temporarily:
-
-```powershell
-Set-DnsClientServerAddress `
-    -InterfaceAlias $InterfaceAlias `
-    -ServerAddresses "192.168.20.2"
-```
-
-Confirm the address and gateway:
-
-```powershell
-Get-NetIPConfiguration -InterfaceAlias $InterfaceAlias
-```
-
-## 2. Rename the Server
-
-```powershell
-Rename-Computer `
-    -NewName "U01PARVMDOM01" `
-    -Restart
-```
-
-After the restart, confirm the name and rediscover the adapter if required:
-
-```powershell
-$env:COMPUTERNAME
-
-Get-NetAdapter |
-    Where-Object Status -eq "Up" |
-    Select-Object Name, InterfaceIndex, Status
-```
-
-Set the active adapter alias again if the PowerShell session was restarted:
-
-```powershell
-$InterfaceAlias = "<ACTIVE_INTERFACE_ALIAS>"
-```
-
-## 3. Install Active Directory Domain Services
+## 1. Install Active Directory Domain Services
 
 ```powershell
 Install-WindowsFeature `
@@ -152,7 +78,7 @@ Install-WindowsFeature `
     -IncludeManagementTools
 ```
 
-## 4. Create the First Forest and Domain Controller
+## 2. Create the First Forest and Domain Controller
 
 The following command creates the first forest, installs DNS, and promotes the server as the first domain controller.
 
@@ -173,7 +99,7 @@ Install-ADDSForest `
 
 The server will restart automatically. Sign in with the domain Administrator account after the restart.
 
-## 5. Configure the Domain Controller DNS Client
+## 3. Configure the Domain Controller DNS Client
 
 Discover the active interface again:
 
@@ -195,7 +121,7 @@ Set-DnsClientServerAddress `
 
 Do not use `127.0.0.1` as the documented DNS client address. The fixed server address makes the configuration explicit and easier to troubleshoot.
 
-## 6. Configure the DNS Forwarder
+## 4. Configure the DNS Forwarder
 
 Add the upstream DNS server as a forwarder:
 
@@ -216,7 +142,7 @@ Confirm the forwarder:
 Get-DnsServerForwarder
 ```
 
-## 7. Validate the Deployment
+## 5. Validate the Deployment
 
 Confirm the domain controller identity:
 
