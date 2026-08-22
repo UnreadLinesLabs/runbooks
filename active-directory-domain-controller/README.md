@@ -31,8 +31,6 @@ Use the DNS name `unreadlines.com` later as an alternate UPN suffix for Microsof
 
 ## Initial Manual Preparation
 
-Before starting the PowerShell procedure, perform the following actions manually in the Windows Server console. Do not configure a temporary second IPv4 address.
-
 1. Configure the final IPv4 address and subnet mask manually:
     - IPv4 address: `192.168.20.41`
     - Subnet mask: `255.255.255.0` (`/24`)
