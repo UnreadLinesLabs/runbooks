@@ -42,6 +42,38 @@ Use the DNS name `unreadlines.com` later as an alternate UPN suffix for Microsof
 
 The IPv4 address is final from the beginning. Only the client DNS setting changes after AD DS/DNS installation: it changes from the upstream DNS server `192.168.20.2` to the local DNS service `192.168.20.41`.
 
+### Verify the Hostname and Network Configuration
+
+Before installing AD DS, verify the manually configured hostname, IP address, subnet prefix, gateway, and DNS server:
+
+```powershell
+$ActiveInterface = Get-NetAdapter |
+    Where-Object Status -eq "Up" |
+    Select-Object -First 1
+
+$Configuration = Get-NetIPConfiguration `
+    -InterfaceIndex $ActiveInterface.ifIndex
+
+[PSCustomObject]@{
+    ComputerName = $env:COMPUTERNAME
+    Interface    = $ActiveInterface.Name
+    IPv4Address  = ($Configuration.IPv4Address.IPAddress -join ", ")
+    PrefixLength = ($Configuration.IPv4Address.PrefixLength -join ", ")
+    Gateway      = ($Configuration.IPv4DefaultGateway.NextHop -join ", ")
+    DnsServers   = ($Configuration.DnsServer.ServerAddresses -join ", ")
+}
+```
+
+Confirm these values before continuing:
+
+```text
+ComputerName : U01PARVMDOM01
+IPv4Address  : 192.168.20.41
+PrefixLength : 24
+Gateway      : 192.168.20.2
+DnsServers   : 192.168.20.2
+```
+
 ### Rename the Server with PowerShell
 
 If the computer name was not configured manually, rename the server before installing AD DS:
