@@ -1,4 +1,4 @@
-# OpenWrt WireGuard Site-to-Site Lab
+# VMware Workstation Pro + OpenWrt Network Lab — PC1 and PC2 with a WireGuard Tunnel
 
 This document describes, **from scratch**, how to set up a network lab spread across **two physical PCs**, each hosting an **OpenWrt x86-64** router/firewall inside **VMware Workstation Pro** on Windows.
 
@@ -900,6 +900,46 @@ icmp && ip.addr == 192.168.20.126
 icmp && ip.addr == 192.168.20.254
 udp.port == 51820
 ```
+
+---
+
+## 26. Access from the host PCs to the remote LAB
+
+The WireGuard tunnel correctly links the VMs of both LABs together. But by default, the **host PCs themselves** (not the VMs) can reach VMs on their own local LAB, but not those on the remote LAB (SSH, RDP, etc.), even when the tunnel is working perfectly.
+
+### Why
+
+* The LAB VMs use OpenWrt as their default gateway, so they automatically inherit the route to the remote LAB added by `route_allowed_ips='1'` (section 20.6).
+* The host PC's `VMware Network Adapter VMnet2` interface, on the other hand, is deliberately configured with **no gateway at all**: this is what lets the host PC keep its normal default route to the Internet via Wi-Fi, without VMnet2 overriding it.
+* Result: the host PC knows its own LAB subnet (directly connected) but has no route to the remote LAB subnet.
+
+### Fix: add a persistent static route
+
+On **PC1** (PowerShell, run as administrator):
+
+```powershell
+route -p add 192.168.20.128 mask 255.255.255.128 192.168.20.126
+```
+
+On **PC2** (PowerShell, run as administrator):
+
+```powershell
+route -p add 192.168.20.0 mask 255.255.255.128 192.168.20.254
+```
+
+* `-p` makes the route persistent (it survives a reboot).
+* The first parameter plus `mask` describe the remote LAB prefix (`/25`).
+* The last parameter is the **local** OpenWrt's LAN IP (the gateway into the tunnel).
+
+> ⚠️ Do not use `New-NetRoute ... -PolicyStore PersistentStore`: on some Windows builds, that parameter combination triggers the error `Invalid parameter PolicyStore PersistentStore` (System Error 87). The legacy `route -p` command works reliably and persists the route correctly.
+
+### Verification
+
+```powershell
+route print -4 | findstr "192.168.20"
+```
+
+The route should show up both in the active routing table and in the "Persistent Routes" section. Once added, the host PC can reach the remote LAB's VMs over SSH/RDP, exactly as the LAB VMs already do via OpenWrt.
 
 ---
 
