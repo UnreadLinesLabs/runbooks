@@ -1,4 +1,4 @@
-# VMware Workstation Pro + OpenWrt Network Lab — PC1 and PC2 with a WireGuard Tunnel
+# OpenWrt WireGuard Site-to-Site Lab
 
 This document describes, **from scratch**, how to set up a network lab spread across **two physical PCs**, each hosting an **OpenWrt x86-64** router/firewall inside **VMware Workstation Pro** on Windows.
 
