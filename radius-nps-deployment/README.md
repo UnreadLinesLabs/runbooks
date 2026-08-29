@@ -119,15 +119,17 @@ Confirm:
 Get-WindowsFeature -Name NPAS
 ```
 
+`NPAS` does not include the AD PowerShell module (`Get-ADGroupMember`, `New-ADGroup`, etc.) — don't install `RSAT-AD-PowerShell` here just to get it. `U01PARVMDOM01` already has the `ActiveDirectory` module natively, as a domain controller, so every AD-native command in this lab (§2, §3, §8) is run there instead — the same split `ad-cs-pki-deployment/README.md` uses for its own GPO steps ("Switch servers for this part — the `GroupPolicy` module isn't necessarily installed on `U01PARVMPKI02`. Use `U01PARVMDOM01`.").
+
 ## 2. Register NPS in Active Directory
 
-Registering the server authorizes it to read dial-in/network-access properties from user and computer accounts in this domain, by adding its computer account to the built-in `RAS and IAS Servers` group.
+On `U01PARVMNPS01`, registering the server authorizes it to read dial-in/network-access properties from user and computer accounts in this domain, by adding its computer account to the built-in `RAS and IAS Servers` group:
 
 ```powershell
 netsh ras add registeredserver
 ```
 
-Confirm:
+**On `U01PARVMDOM01`**, confirm:
 
 ```powershell
 Get-ADGroupMember -Identity "RAS and IAS Servers" |
@@ -138,21 +140,21 @@ Get-ADGroupMember -Identity "RAS and IAS Servers" |
 
 ## 3. Create the Wi-Fi Mobile Access Group
 
-Following the group naming convention (`standards/server-naming-convention.md` §4), create a dedicated security group to scope who is allowed to authenticate on `UnreadLines-Mobile`, rather than granting the Network Policy to a broad built-in group. The name mirrors the SSID it governs, the same way `hostapd-wifi-access-point-lab/README.md` §13 names `UnreadLines-Corp` for a future, separate workstation group:
+**On `U01PARVMDOM01`.** Following the group naming convention (`standards/server-naming-convention.md` §4), create a dedicated security group to scope who is allowed to authenticate on `UnreadLines-Mobile`, rather than granting the Network Policy to a broad built-in group. The name mirrors the SSID it governs, the same way `hostapd-wifi-access-point-lab/README.md` §13 names `UnreadLines-Corp` for a future, separate workstation group:
 
 ```powershell
 New-ADGroup `
     -Name "GG-U01-PAR-WiFi-Mobile" `
     -GroupScope Global `
     -GroupCategory Security `
-    -Path "OU=Groups,OU=PAR,OU=U01,DC=corp,DC=unreadlines,DC=com" `
+    -Path "OU=Groups,OU=PAR,OU=U01,OU=UnreadLines,DC=corp,DC=unreadlines,DC=com" `
     -Description "Members permitted to authenticate on UnreadLines-Mobile (802.1X EAP-TLS)"
 ```
 
-Add members as needed (users and/or computer accounts, once EAP-TLS is active):
+Leave the group empty for now — there is no real `UnreadLines-Mobile` user or device to add yet. Membership only starts mattering once a pilot mobile is actually enrolled in Intune and needs Wi-Fi access, which is later work (`infrastructure/plan-wifi-eap-tls-scep-intune.md`, video 13), not part of this lab. When that day comes, adding a member looks like this — replace `<SamAccountName>` with a real existing account or computer name, never run it with a placeholder value:
 
 ```powershell
-Add-ADGroupMember -Identity "GG-U01-PAR-WiFi-Mobile" -Members "u783476512"
+Add-ADGroupMember -Identity "GG-U01-PAR-WiFi-Mobile" -Members "<SamAccountName>"
 ```
 
 ## 4. Add the RADIUS Client (NAS)
@@ -187,26 +189,102 @@ nps.msc → Policies → Connection Request Policies
 
 ## 6. Create the Network Policy for `UnreadLines-Mobile`
 
+Under `Policies`, NPS has two similarly-named nodes — **Connection Request Policies** and **Network Policies**. This step is the second one. §5 already confirmed the default Connection Request Policy needs no changes; don't create a new Connection Request Policy here.
+
 ```text
 nps.msc → Policies → Network Policies → New
-
-  Policy name : UnreadLines-Mobile - EAP-TLS
-
-  Conditions:
-    - NAS IPv4 Address    : 192.168.20.145
-    - Windows Groups      : GG-U01-PAR-WiFi-Mobile
-
-  Access permission       : Access granted
-
-  Authentication methods  : EAP-TLS only
-                            (remove MS-CHAP v2 and any other method —
-                            UnreadLines-Mobile is certificate-based, not
-                            password-based)
-
-  Constraints             : defaults are fine for the lab
-
-  Order                   : above the built-in "NPS Deny All" catch-all policy
 ```
+
+**Page 1 — Specify Network Policy Name and Connection Type:**
+
+```text
+Policy name                    : UnreadLines-Mobile - EAP-TLS
+Type of network access server  : Unspecified
+```
+
+Leave it on **Unspecified**, not "Remote Access Server (VPN-Dial up)" or "Remote Desktop Gateway" — the wizard's own hint text says why: `RAP01` is an 802.1X-authenticating wireless access point, which is exactly the case the hint tells you to pick Unspecified for.
+
+**Page 2 — Specify Conditions.** Each condition is added one at a time via the **Add...** button, not typed directly:
+
+```text
+Add... → NAS IPv4 Address → Add...
+    Enter the IP address of the network access server : 192.168.20.145
+    → OK
+
+Add... → Windows Groups → Add...
+    → Add Groups...
+        Enter the object name to select : GG-U01-PAR-WiFi-Mobile
+        → Check Names → OK
+    → OK
+```
+
+`Windows Groups` sits under the "User or Machine Groups" category in the condition list — search for "group" in the Add Condition dialog's filter box if it isn't immediately visible.
+
+**Page 3 — Specify Access Permission:**
+
+```text
+Access granted
+```
+
+**Page 4 — Configure Authentication Methods.** There is no literal "EAP-TLS" checkbox in this UI — it's called **Microsoft: Smart Card or other certificate**:
+
+```text
+Add... → Microsoft: Smart Card or other certificate → OK
+```
+
+Remove every other method already checked by the wizard's defaults (including MS-CHAP v2) — `UnreadLines-Mobile` is certificate-based, not password-based, and leaving a weaker method enabled would let NPS silently fall back to it.
+
+**Page 5 — Configure Constraints.** Two of the five sub-pages are worth actually setting, not skipping:
+
+```text
+NAS Port Type
+    Wireless - IEEE 802.11    : checked (only this one)
+```
+
+`NAS IPv4 Address` (§ Page 2) already scopes this policy to `RAP01` specifically, but adding `NAS Port Type` tightens it further: this policy only ever matches an actual 802.11 wireless association from that NAS, not some other RADIUS-speaking use of the same IP added later. This is the same condition the earlier, undocumented NPS attempt used (`infrastructure/analyse-pki-intune-nps.md` §5.7: "condition NAS Port Type = Wireless IEEE 802.11").
+
+```text
+Session Timeout
+    Set the maximum session time to    : 8 hours
+```
+
+Without a session timeout, an accepted client's connection is trusted indefinitely once it's on — a certificate revoked five minutes after that client connected has no effect until the client happens to disconnect and reassociate on its own. A session timeout forces periodic reauthentication (a fresh EAP-TLS handshake, which re-checks the certificate against the current CRL), bounding how long a revoked-but-still-connected client can stay on `UnreadLines-Mobile`. 8 hours is a reasonable default for a workday device; tighten it later if the threat model calls for it.
+
+Leave the rest at their defaults, and here's why each one doesn't apply:
+
+```text
+Idle Timeout             : not meaningful for Wi-Fi the way it is for dial-up/VPN — skip
+Called Station ID        : would pin the policy to RAP01's specific radio MAC; too
+                            brittle for a lab (swap the USB adapter, break the policy)
+Day and time restrictions: no business-hours requirement for this lab — skip
+```
+
+**Page 6 — Configure Settings.** Genuinely nothing to change here for this lab — but worth knowing why each section is being skipped rather than just clicking through:
+
+```text
+RADIUS Attributes → Standard        : not needed. This is where Tunnel-Type /
+                                       Tunnel-Medium-Type / Tunnel-Private-Group-ID
+                                       would go for RADIUS-assigned dynamic VLANs
+                                       per client — but hostapd-wifi-access-point-lab
+                                       abandoned per-client VLANs entirely (§9): each
+                                       SSID gets its own dedicated VMware network, not
+                                       a shared one split by RADIUS-assigned VLAN. That
+                                       mechanism doesn't apply to this topology.
+RADIUS Attributes → Vendor Specific : not needed — RAP01 was declared with vendor
+                                       "RADIUS Standard" in §4, not a vendor requiring
+                                       custom VSAs.
+Network Access Protection           : NAP is deprecated/removed on current Windows
+                                       Server — ignore this section if it even appears.
+Routing and Remote Access           : Multilink/BAP, IP Filters, Encryption, IP
+                                       Settings are all RRAS/VPN/dial-up settings —
+                                       irrelevant since Page 1 set "Type of network
+                                       access server" to Unspecified for a wireless AP,
+                                       not a VPN or dial-up server.
+```
+
+**Finish.**
+
+**After the wizard closes**, check the policy's position in the `Network Policies` list — it must sit above the built-in "NPS Deny All" catch-all policy, or NPS never evaluates it. Right-click it → **Move Up** if needed.
 
 This policy is created now so the AD group, the RADIUS client, and the policy logic are all in place and reviewable. It cannot actually admit a client yet — EAP-TLS requires NPS to present a Server Authentication certificate, which does not exist until the "Next step" section below is completed. Attempting a real EAP-TLS handshake against this server today fails at the TLS layer with no valid server certificate to offer, which is expected.
 
@@ -224,32 +302,66 @@ Get-NetFirewallRule -DisplayGroup "Network Policy Server" |
 
 ## 8. Validate the Deployment
 
-Export the full NPS configuration for review and as a backup baseline:
+**On `U01PARVMNPS01`.** Export the full NPS configuration for review and as a backup baseline, and confirm the role is installed:
 
 ```powershell
 netsh nps show config
+
+Get-WindowsFeature -Name NPAS
 ```
 
-Confirm the role, AD registration, RADIUS client, and policy are all in place:
+**On `U01PARVMDOM01`.** Confirm the AD registration and the access group are both in place:
 
 ```powershell
-Get-WindowsFeature -Name NPAS
 Get-ADGroupMember -Identity "RAS and IAS Servers" | Select-Object Name
 Get-ADGroup -Identity "GG-U01-PAR-WiFi-Mobile"
 ```
 
 ### Connectivity and Shared-Secret Test (`radtest`)
 
-Because `UnreadLines-Mobile` itself can't authenticate yet (§6), validate the RADIUS path independently with `radtest` from a Linux host that can reach `192.168.20.46` — `U01PARVMRAP01` is the natural place to run this, since it's the actual RADIUS client and it already sits in Subnet 2:
+**Before running anything: this test will end in `Access-Reject`, on every correctly-configured attempt, and that's the correct outcome — not a failure to troubleshoot.** `UnreadLines-Mobile - EAP-TLS` (§6) only accepts EAP-TLS from a `Wireless - IEEE 802.11` NAS port type; `radtest` speaks plain PAP over a generic NAS port and satisfies neither, by design. There is no version of this command that returns `Access-Accept` against that policy — real EAP-TLS access only starts working once the certificate work in "Next step" is done. The point of this test isn't the top-line result, it's what's underneath it: whether the *reason* for the reject is the authentication method (good — everything else works) or something else entirely (an actual problem). Read the whole subsection below before running the command, so an `Access-Reject` on screen doesn't read as something broken.
+
+Because `UnreadLines-Mobile` itself can't authenticate yet, validate the RADIUS path independently with `radtest` from a Linux host that can reach `192.168.20.46` — `U01PARVMRAP01` is the natural place to run this, since it's the actual RADIUS client and it already sits in Subnet 2. Use a **real** domain account (its actual `sAMAccountName` and password) — never the `u783476512` placeholder from the naming-convention examples, which doesn't exist in AD and will always be rejected as an unknown identity regardless of everything else being correct.
+
+By default `radtest` sends `NAS-IP-Address` as whatever the local machine's hostname resolves to (`127.0.1.1` on a typical Ubuntu `/etc/hosts` — not `RAP01`'s real management IP), which won't match this policy's `NAS IPv4 Address` condition (§6). Pass `RAP01`'s real address explicitly as the trailing `nasname` argument:
 
 ```bash
 sudo apt install -y freeradius-utils
 
-# radtest <user> <password> <radius-server> <nas-port> <shared-secret>
-radtest u783476512 'TestPassword123!' 192.168.20.46 0 '<generated secret>'
+# radtest <user> <password> <radius-server> <nas-port> <shared-secret> <ppp-hint> <nasname>
+radtest <real-domain-account> '<real-password>' 192.168.20.46 0 '<generated secret>' '' 192.168.20.145
 ```
 
-A domain account that has network dial-in permission allowed (or "Control access through NPS Network Policy" with a matching PAP-permitting test policy) returns `Access-Accept`; a wrong shared secret returns no reply at all (silently dropped, by RADIUS design — check `netsh nps show config` and the shared secret on both ends if that happens). This only proves the RADIUS path, the shared secret, and basic PAP authentication work — it does not validate EAP-TLS, which needs the certificate work below.
+What this test actually proves is narrower than "accepted or not", and worth checking precisely:
+
+- **No reply at all (timeout)** → the shared secret doesn't match on one side, or the request never reached NPS (routing/firewall). Check `netsh nps show config` and the secret configured in §4.
+- **A reply, and `radclient`/`radtest` doesn't complain about it** → the shared secret is correct. If the secret were wrong, `radclient` explicitly says so ("invalid Response Authenticator! (Shared secret is incorrect.)") instead of just showing the reject — its absence here is itself the confirmation.
+- **`Access-Reject`, and the NPS Security event log names the reason** — check it on `U01PARVMNPS01`:
+
+  ```powershell
+  Get-WinEvent -LogName Security |
+      Where-Object Id -eq 6273 |
+      Select-Object -First 1 -ExpandProperty Message
+  ```
+
+  A reason naming the authentication method or NAS port type (not an unknown user or an unrecognized RADIUS client) confirms the whole chain up to that point — secret, NAS recognition, account resolution — is correct, and the only remaining gap is the certificate.
+
+  Reference result from this lab's own run:
+
+  ```text
+  User → Security ID              : S-1-5-21-... (a real SID — not S-1-0-0 / NULL SID,
+                                     the specific failure analyse-pki-intune-nps.md hit
+                                     with an unresolved Entra UPN)
+  RADIUS Client → Friendly Name   : U01PARVMRAP01
+  NAS → NAS IPv4 Address          : 192.168.20.145
+  Network Policy Name             : UnreadLines-Mobile - EAP-TLS   (not "NPS Deny All")
+  Authentication Type / EAP Type  : PAP / -
+  Reason Code                     : 66
+  Reason                          : The user attempted to use an authentication method
+                                     that is not enabled on the matching network policy.
+  ```
+
+  That combination — real account resolved, correct RADIUS client and NAS IP, the right Network Policy matched, and a reject that names only the authentication method — is the complete, correct outcome at this stage. Nothing further to fix here; proceed to "Next step."
 
 ## Expected Final State
 
@@ -263,7 +375,10 @@ Role               : NPS (Network Policy and Access Services)
 Registered in AD   : Yes (RAS and IAS Servers)
 RADIUS client      : U01PARVMRAP01 (192.168.20.145)
 Network Policy     : UnreadLines-Mobile - EAP-TLS (created, not yet usable)
-radtest (PAP)      : Access-Accept
+radtest (PAP)      : Access-Reject, with a signed reply (no "invalid Response
+                     Authenticator" warning) and a 6273 event citing method/NAS
+                     port type, not an unknown user — this is the correct
+                     outcome against an EAP-TLS-only policy, not a failure
 EAP-TLS            : Blocked on NPS server certificate — see Next step
 ```
 

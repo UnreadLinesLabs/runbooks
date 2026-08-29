@@ -91,13 +91,16 @@ Site and entity codes (§1) structure the OU tree; they are not carried into hum
 
 ```text
 corp.unreadlines.com
-└── OU=U01
-    ├── OU=PAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
-    ├── OU=MAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
-    └── OU=BDX  (Users, Workstations, Servers, Groups, ServiceAccounts)
+└── OU=UnreadLines
+    └── OU=U01
+        ├── OU=PAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
+        ├── OU=MAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
+        └── OU=BDX  (Users, Workstations, Servers, Groups, ServiceAccounts)
 ```
 
-A user can physically sit in `OU=Users,OU=PAR,OU=U01,DC=corp,DC=unreadlines,DC=com` while having a login that is independent of the site (see §4).
+`OU=UnreadLines` is a single top-level OU holding everything below it, kept separate from AD's built-in containers (`CN=Users`, `CN=Computers`, `CN=System`, ...) — it was renamed from an initial `UnreadLines Labs` to match the company name used everywhere else (`UnreadLines Root CA`, `UnreadLines Issuing CA`, the `corp.unreadlines.com` domain itself); "Labs" is the name of the project/channel producing these runbooks, not a name that belongs inside the fictional company's own AD.
+
+A user can physically sit in `OU=Users,OU=PAR,OU=U01,OU=UnreadLines,DC=corp,DC=unreadlines,DC=com` while having a login that is independent of the site (see §4).
 
 ---
 
