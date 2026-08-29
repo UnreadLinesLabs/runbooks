@@ -150,9 +150,12 @@ compatibility floor beyond what `RAS and IAS Server` already assumes.
 
 **Subject Name tab — nothing to change.** This is exactly why `RAS and IAS Server` is the standard starting point
 for a RADIUS server certificate: duplicating it already carries over `Build from this Active Directory
-information`, Subject Name Format `None`, and `DNS name` checked under Alternate subject name. The Subject
-Alternative Name built from `U01PARVMNPS01`'s AD computer object is what an EAP-TLS client actually validates the
-server certificate against later — confirm it's still checked, but there's nothing to enable.
+information`, Subject name format `Common name`, and `DNS name` checked under "Include this information in
+alternate subject name". The Subject name format dropdown shows as greyed out ("Control is disabled due to
+compatibility settings") — the Compatibility tab's CSP/provider selection locks it, so there's nothing to pick
+here even if a different format were wanted. That's fine: EAP-TLS clients validate the server certificate against
+its Subject *Alternative* Name, not the CN, and the SAN's `DNS name` — built from `U01PARVMNPS01`'s AD computer
+object — is already checked. Confirm it's still checked; there's nothing to enable.
 
 **Extensions tab — nothing to change.** `Application Policies` already lists both `Client Authentication` and
 `Server Authentication`, inherited from the built-in template. NPS only needs `Server Authentication`, but the
@@ -178,16 +181,31 @@ RAS and IAS Servers (built-in group)
 U01PARVMNPS01 (computer account)
     Read       : Allow
     Enroll     : Allow
-    Autoenroll : Not granted
+    Autoenroll : Allow
 ```
 
 `U01PARVMNPS01` doesn't appear by default in the **Select Users, Computers, Service Accounts, or Groups** dialog —
 click **Object Types...** and check **Computers** first, then type `U01PARVMNPS01` and **Check Names**.
-`Autoenroll` is deliberately left ungranted: this lab enrolls manually (§2 below), matching how the original
-"Next Step" note phrased it (`certlm.msc` or `Get-Certificate`), not GPO-driven autoenrollment. Before publishing,
-review the full ACL once more and confirm no other broad group (`Domain Computers`, `Everyone`, or anything else
-carried over from the duplication) still holds `Enroll` or `Autoenroll` — the same caution Phase 7 called out for
-its own template.
+
+Unlike `PKI Validation` in Phase 7 — a throwaway template deliberately kept to manual-only enrollment —
+`NPS Server Authentication` is a production server certificate that has to keep working unattended. Without
+`Autoenroll`, nobody notices it's about to expire until `UnreadLines-Mobile` starts failing EAP-TLS handshakes one
+day, which is a bad way to find out. `Autoenroll` lets `U01PARVMNPS01` renew this certificate on its own before
+`NotAfter`, with no one having to repeat §2 manually.
+
+`Autoenroll` on the template's ACL is necessary but **not sufficient** on its own — it only controls whether the
+CA lets `U01PARVMNPS01` autoenroll, not whether the computer actually tries to. That second half comes from Group
+Policy: `Computer Configuration → Policies → Windows Settings → Security Settings → Public Key Policies →
+Certificate Services Client - Auto-Enrollment`, set to **Enabled**, with both **Renew expired certificates,
+update pending certificates, and remove revoked certificates** and **Update certificates that use certificate
+templates** checked, linked to an OU that covers `U01PARVMNPS01`. Nothing in this project has configured that GPO
+yet — `ad-cs-pki-deployment/README.md` Phase 6 only deploys a GPO for Root CA *trust*, not for autoenrollment.
+Confirm that policy is enabled (create and link it if it isn't) before relying on this to renew itself; until
+then, granting `Autoenroll` here is necessary groundwork, but renewal is still effectively manual.
+
+Before publishing, review the full ACL once more and confirm no other broad group (`Domain Computers`,
+`Everyone`, or anything else carried over from the duplication) still holds `Enroll` or `Autoenroll` beyond what's
+listed above — the same caution Phase 7 called out for its own template.
 
 Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** → **Certificate
 Template to Issue** → select `NPS Server Authentication`.
@@ -195,12 +213,24 @@ Template to Issue** → select `NPS Server Authentication`.
 ## 2. Enroll the Certificate — on `U01PARVMNPS01`
 
 In an elevated session (the certificate goes into the `LocalMachine` store, not a user's), either the GUI or the
-PowerShell equivalent works — both are mentioned in `radius-nps-deployment/README.md`'s "Next Step" note:
+PowerShell equivalent works — both are mentioned in `radius-nps-deployment/README.md`'s "Next Step" note. **Use
+one, not both.** Neither method warns about or detects the other: each is its own enrollment request, so running
+both silently issues two separate, equally valid certificates from the same template — same subject, different
+thumbprints — leaving two entries to disambiguate for no reason in §3.
+
+This is the certificate's first, manual issuance — §1 granted `Autoenroll` for *renewals*, it doesn't skip this
+initial request. That said, if the domain's autoenrollment GPO (§1) happens to already be linked and applied by
+the time this step runs, `U01PARVMNPS01` could pick up the certificate on its own at the next Group Policy
+refresh (`gpupdate /force`) before either command below is even run. Check `certlm.msc` → Personal → Certificates
+first — if `NPS Server Authentication` is already there, that's autoenrollment having done its job; don't enroll
+again manually on top of it.
 
 ```text
 certlm.msc → Personal → All Tasks → Request New Certificate
     → Active Directory Enrollment Policy → NPS Server Authentication → Enroll
 ```
+
+*— or —*
 
 ```powershell
 Get-Certificate -Template "NPSServerAuthentication" -CertStoreLocation "Cert:\LocalMachine\My"
@@ -209,6 +239,18 @@ Get-Certificate -Template "NPSServerAuthentication" -CertStoreLocation "Cert:\Lo
 If the template doesn't appear in either path, the CA hasn't propagated the publication yet or the computer
 account's `Enroll` right from §1 didn't take — re-check the Security tab on `U01PARVMPKI02` before assuming a
 client-side problem.
+
+If both ended up running anyway, nothing is broken — both certificates are equally valid, just redundant. Compare
+`NotBefore` to find the one just issued and bind that one in §3:
+
+```powershell
+Get-ChildItem Cert:\LocalMachine\My |
+    Where-Object Issuer -like "*UnreadLines Issuing CA*" |
+    Select-Object Thumbprint, NotBefore, NotAfter, SerialNumber
+```
+
+The other is safe to leave for now; clean it up later by revoking it on `U01PARVMPKI02` (`certsrv.msc` → Issued
+Certificates → match the `SerialNumber` above → **Revoke**) and removing it from `Cert:\LocalMachine\My`.
 
 Confirm it landed and carries the expected issuer and EKU:
 
