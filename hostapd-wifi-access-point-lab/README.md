@@ -432,7 +432,35 @@ Then open any website to confirm DNS resolution end-to-end.
 iw dev wlx00c0cab23594 station dump
 ```
 
-**Phone associates but never gets an IP** — walk the path from the radio outward, one hop at a time:
+**Phone associates but never gets an IP** — check bridge membership first, it's the most common cause and takes one command:
+
+```bash
+bridge link show
+# must show BOTH:
+#   ens37             master br-vlan10 state forwarding
+#   wlx00c0cab23594   master br-vlan10 state forwarding
+```
+
+Either side can silently fall out of the bridge on its own — not just after a reboot, but during normal operation (observed in this lab: the client authenticated and completed the WPA handshake fine, then kept disassociating on inactivity and retrying, because `wlx00c0cab23594` had dropped out of `br-vlan10` and no traffic — including the client's own DHCP requests — could reach `ens37`/`FWL02` at all). Whichever one is missing, re-add it directly:
+
+```bash
+sudo ip link set wlx00c0cab23594 master br-vlan10   # if the radio fell out
+sudo ip link set ens37 master br-vlan10               # if the VMnet3 NIC fell out
+```
+
+(`sudo netplan apply` also works for `ens37`, since it's declared in Netplan — but the direct `ip link set` above is faster and works for either interface.)
+
+**`ip link set ... master br-vlan10` fails with `Cannot find device`** — the interface isn't just out of the bridge, it's gone from the system entirely. Confirm with `dmesg | tail -40`: a line like `usb 3-2: USB disconnect, device number N` means the adapter genuinely dropped off the USB bus, not a config issue. Reconnect it (§3.3: **VM → Removable Devices**), then restart `hostapd` — it doesn't reliably pick up a newly re-appeared interface on its own:
+
+```bash
+lsusb                          # confirm the Realtek adapter is back
+sudo systemctl restart hostapd
+bridge link show               # confirm both members again
+```
+
+Spontaneous USB disconnects like this (unrelated to a VM reboot) have shown up more than once in this lab and were never fully root-caused — switching `rtw_switch_usb_mode` and changing the VM's virtual USB controller (3.1 → 2.0) didn't stop them. Treat it as a known rough edge of USB passthrough under VMware Workstation: reconnect and restart `hostapd` when it happens, rather than something to permanently fix.
+
+If membership is fine but you still see nothing get through, walk the path from the radio outward:
 
 ```bash
 # on RAP01, at the radio
@@ -440,16 +468,6 @@ sudo tcpdump -i wlx00c0cab23594 -nne 'port 67 or port 68 or arp'
 # on RAP01, at the VMnet3 NIC
 sudo tcpdump -i ens37 -nne 'port 67 or port 68 or arp'
 ```
-
-If the DHCP request shows up on `wlx00c0cab23594` but not on `ens37`, the bridge isn't relaying it — check membership:
-
-```bash
-bridge link show
-# must show: ens37  master br-vlan10 state forwarding
-#            wlx00c0cab23594  master br-vlan10 state forwarding
-```
-
-If `ens37` is missing, `hostapd` re-adding the radio to the bridge on its own restart is usually enough; if `ens37` itself fell out of the bridge, `sudo netplan apply` re-applies the declarative config from §3.5.
 
 **DHCP request reaches `FWL02` but no lease is handed out** — check the DHCP config took effect:
 
@@ -537,14 +555,26 @@ Rather than keep chasing a VMware Workstation internals issue, the design was ch
 - `firewall.wifi.input='ACCEPT'` is convenient for lab testing; tighten it once the lab is validated, if `RAP01`/`FWL02` don't need to be reachable directly from Wi-Fi clients.
 - The diagnostic address on `br-vlan10` (`192.168.21.2/25`, §3.5) is optional — remove it if `RAP01` doesn't need to be reachable on the Wi-Fi segment itself.
 
-## 13. Next step — a second SSID
+## 13. Next steps — enterprise SSIDs (mobile, then workstations)
 
-This adapter can only run one SSID at a time (§3.4), so a second SSID (WPA2/WPA3-Enterprise, EAP-TLS, once a RADIUS server exists) is built as a separate follow-up, not prepared in advance here. Given §9, it should follow the same pattern as SSID#1 — a new, dedicated VMware network (e.g. `VMnet4`) rather than a VLAN — on a new subnet (e.g. `192.168.22.0/25`):
+This adapter can only run **one SSID at a time** (§3.4) — that constraint doesn't go away once EAP-TLS is added, it just moves: whichever SSID is configured in `hostapd.conf` is the only one live, the others are offline until swapped in. So the eventual naming plan, following the `UnreadLines-Guest` pattern already in use:
+
+| SSID | Purpose | Auth | Order |
+| --- | --- | --- | --- |
+| `UnreadLines-Guest` | Personal devices, no domain trust | WPA2-Personal | Built, live today |
+| `UnreadLines-Mobile` | Domain-managed mobile devices (Intune-enrolled) | WPA2/WPA3-Enterprise, EAP-TLS | Built first, once RADIUS/NPS exists |
+| `UnreadLines-Corp` | Domain-joined workstations | WPA2/WPA3-Enterprise, EAP-TLS | Later — same pattern, reserved for now |
+
+(Names above are a proposal, not yet finalized — adjust freely if a different scheme fits the fleet better.)
+
+Building `UnreadLines-Mobile` follows the same pattern as SSID#1 — a new, dedicated VMware network (e.g. `VMnet4`) rather than a VLAN (§9), on a new subnet (e.g. `192.168.22.0/25`):
 
 1. Create `VMnet4` and attach it to `RAP01` and `FWL02`, same process as §4.
 2. Add the new interface to `RAP01`'s Netplan and to `FWL02` (§3.5 / §6), same pattern as SSID#1.
-3. `sudo systemctl stop hostapd` on `RAP01`; edit `/etc/hostapd/hostapd.conf` to point at the new SSID, switch to `ieee8021x=1` / `wpa_key_mgmt=WPA-EAP` with the RADIUS IP/shared secret, and change `bridge=br-vlan10` to the new bridge; `sudo systemctl start hostapd`. Since this adapter can't run both at once, SSID#1 goes offline while SSID#2 is active.
+3. `sudo systemctl stop hostapd` on `RAP01`; edit `/etc/hostapd/hostapd.conf` to point at `UnreadLines-Mobile`, switch to `ieee8021x=1` / `wpa_key_mgmt=WPA-EAP` with the RADIUS IP/shared secret, and change `bridge=br-vlan10` to the new bridge; `sudo systemctl start hostapd`. `UnreadLines-Guest` goes offline while it's active.
 4. Update `standards/vm-inventory.md` accordingly.
+
+`UnreadLines-Corp` (workstations) is the same build, later — another dedicated VMware network, another subnet, same swap-in mechanism. Both remain single-BSS constrained until a second physical Wi-Fi adapter is added, at which point any two of these three SSIDs could run concurrently.
 
 The certificate and Intune side of that work is designed in `README-Intune-SCEP-WiFi-EAP-TLS.md`; the PKI it depends on is `ad-cs-pki-deployment/README.md`.
 
