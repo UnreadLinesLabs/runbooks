@@ -194,14 +194,10 @@ day, which is a bad way to find out. `Autoenroll` lets `U01PARVMNPS01` renew thi
 `NotAfter`, with no one having to repeat §2 manually.
 
 `Autoenroll` on the template's ACL is necessary but **not sufficient** on its own — it only controls whether the
-CA lets `U01PARVMNPS01` autoenroll, not whether the computer actually tries to. That second half comes from Group
-Policy: `Computer Configuration → Policies → Windows Settings → Security Settings → Public Key Policies →
-Certificate Services Client - Auto-Enrollment`, set to **Enabled**, with both **Renew expired certificates,
-update pending certificates, and remove revoked certificates** and **Update certificates that use certificate
-templates** checked, linked to an OU that covers `U01PARVMNPS01`. Nothing in this project has configured that GPO
-yet — `ad-cs-pki-deployment/README.md` Phase 6 only deploys a GPO for Root CA *trust*, not for autoenrollment.
-Confirm that policy is enabled (create and link it if it isn't) before relying on this to renew itself; until
-then, granting `Autoenroll` here is necessary groundwork, but renewal is still effectively manual.
+CA lets `U01PARVMNPS01` autoenroll, not whether the computer actually tries to. That second half is Group Policy:
+`Certificate Services Client - Auto-Enrollment`, scoped to `U01PARVMNPS01` — built in §5 below, after the
+certificate itself is enrolled and bound. Until §5 is done, granting `Autoenroll` here is necessary groundwork,
+but renewal is still effectively manual.
 
 Before publishing, review the full ACL once more and confirm no other broad group (`Domain Computers`,
 `Everyone`, or anything else carried over from the duplication) still holds `Enroll` or `Autoenroll` beyond what's
@@ -219,11 +215,12 @@ both silently issues two separate, equally valid certificates from the same temp
 thumbprints — leaving two entries to disambiguate for no reason in §3.
 
 This is the certificate's first, manual issuance — §1 granted `Autoenroll` for *renewals*, it doesn't skip this
-initial request. That said, if the domain's autoenrollment GPO (§1) happens to already be linked and applied by
-the time this step runs, `U01PARVMNPS01` could pick up the certificate on its own at the next Group Policy
-refresh (`gpupdate /force`) before either command below is even run. Check `certlm.msc` → Personal → Certificates
-first — if `NPS Server Authentication` is already there, that's autoenrollment having done its job; don't enroll
-again manually on top of it.
+initial request, and the GPO that actually makes autoenrollment happen isn't built until §5, after this
+certificate already exists. (Re-running this lab later — say, after a revocation — is a different story: at that
+point the GPO from §5 already exists and applies, so `U01PARVMNPS01` could pick the certificate back up on its
+own at the next Group Policy refresh, `gpupdate /force`, before either command below is even run. Check
+`certlm.msc` → Personal → Certificates first in that case — if `NPS Server Authentication` is already there,
+that's autoenrollment having done its job; don't enroll again manually on top of it.)
 
 ```text
 certlm.msc → Personal → All Tasks → Request New Certificate
@@ -310,13 +307,126 @@ client certificates issued to any device yet, and `U01PARVMRAP01` hasn't switche
 Both are later, separate work (see Next Step below) — this lab's success condition is narrower: the Network
 Policy now has a valid, correctly-scoped Server Authentication certificate bound to it, where before it had none.
 
-## 5. Update the Infrastructure Inventory
+## 5. Configure Autoenrollment — on `U01PARVMDOM01`
+
+`Autoenroll: Allow` on the template (§1) only grants `U01PARVMNPS01` the *right* to autoenroll — nothing polls for
+it without a GPO enabling the autoenrollment client. This follows the same two-part pattern
+`ad-cs-pki-deployment/README.md` already used twice: Phase 6 (Root CA trust) creates a GPO and imports a
+certificate, Phase 5 (CA auditing) creates a GPO and flips a policy setting; this is the same shape, but for
+autoenrollment.
+
+**Create and scope the GPO.** On `U01PARVMDOM01`:
+
+```text
+gpmc.msc
+  → Domains → corp.unreadlines.com
+    → Create a GPO in this domain, and Link it here...
+      Name: PKI - NPS Autoenrollment
+```
+
+Unlike `PKI - Trusted Root CA` (deliberately domain-wide — every domain computer needs Root trust), this one
+follows the narrower `PKI - Issuing CA Audit` pattern instead: scope it to `U01PARVMNPS01` only, mirroring how
+the template's own ACL (§1) restricts enrollment to that one server rather than to `RAS and IAS Servers` at
+large.
+
+**Security Filtering.** Add `U01PARVMNPS01` (`Object Types → Computers`), then remove `Authenticated Users` from
+Security Filtering.
+
+**Delegation tab.** Confirm (add if missing):
+
+```text
+Authenticated Users
+    Read                Allow
+    Apply Group Policy  No
+
+U01PARVMNPS01
+    Read                Allow
+    Apply Group Policy  Allow
+```
+
+Never set `Deny` on `Authenticated Users` — leaving it at no `Apply Group Policy` right is sufficient and
+reversible, the same caution `ad-cs-pki-deployment/README.md` Phase 5 calls out for its own scoped GPO.
+
+**Configure the policy.** Edit `PKI - NPS Autoenrollment`:
+
+```text
+Computer Configuration
+  -> Policies
+    -> Windows Settings
+      -> Security Settings
+        -> Public Key Policies
+          -> Certificate Services Client - Auto-Enrollment
+             Configuration Model : Enabled
+             Renew expired certificates, update pending
+                certificates, and remove revoked certificates : checked
+             Update certificates that use certificate templates : checked
+```
+
+**Apply and verify — on `U01PARVMNPS01`:**
+
+```powershell
+gpupdate /target:computer /force
+
+gpresult /scope computer /r
+```
+
+Confirm `PKI - NPS Autoenrollment` appears under "Applied Group Policy Objects", not "Denied Group Policy
+Objects" — a Security Filtering or Delegation mistake above shows up here as a silent non-apply, not an error
+dialog. Then trigger an autoenrollment cycle rather than waiting for the default interval, and confirm the
+certificate already enrolled in §2 is still recognized (this is also what a real renewal will look like, later,
+closer to `NotAfter`):
+
+```powershell
+certutil -pulse
+
+Get-ChildItem Cert:\LocalMachine\My |
+    Where-Object Issuer -like "*UnreadLines Issuing CA*" |
+    Select-Object Thumbprint, NotBefore, NotAfter
+```
+
+That `-pulse` above doesn't really prove autoenrollment *works* — nothing changes when a valid certificate already
+exists, so a broken GPO and a working one look identical at that point. A more convincing test: delete a
+certificate and see if it comes back.
+
+The autoenrollment client doesn't remember what it deleted — at every pulse it re-derives, from scratch, which
+templates `U01PARVMNPS01` currently has `Autoenroll` rights on (via AD, per §1's ACL) and whether a valid
+certificate matching each one currently exists in the store. No matching certificate — deleted, expired, or never
+issued, the check doesn't distinguish between those — means it requests a new one. That's the same check a real
+renewal relies on later, just triggered by absence instead of an approaching `NotAfter`.
+
+⚠️ Run this against the **duplicate** certificate from §2 if one still exists, not the one bound in `nps.msc`
+(§3) — deleting the bound certificate breaks `UnreadLines-Mobile - EAP-TLS`'s EAP-TLS binding immediately, since
+`nps.msc` doesn't automatically rebind to a replacement; that would mean redoing §3 by hand afterward just to
+recover, not to test anything.
+
+```powershell
+Get-ChildItem Cert:\LocalMachine\My |
+    Where-Object Issuer -like "*UnreadLines Issuing CA*" |
+    Select-Object Thumbprint, NotBefore, NotAfter
+# note the Thumbprint of the certificate you're about to delete — NOT the one bound in nps.msc
+
+Remove-Item -Path "Cert:\LocalMachine\My\<Thumbprint-to-delete>" -Force
+
+certutil -pulse
+
+Get-ChildItem Cert:\LocalMachine\My |
+    Where-Object Issuer -like "*UnreadLines Issuing CA*" |
+    Select-Object Thumbprint, NotBefore, NotAfter
+```
+
+A new entry with a **different Thumbprint** confirms autoenrollment actually re-issued the certificate, not just
+that the GPO applied without error.
+
+From here on, `U01PARVMNPS01` renews `NPS Server Authentication` on its own before `NotAfter` — no need to repeat
+§2 manually unless the certificate is revoked or the template changes.
+
+## 6. Update the Infrastructure Inventory
 
 Per `server-naming-convention.md` §2, update `standards/vm-inventory.md`'s `U01PARVMNPS01` row: the note "NPS
 server certificate pending" no longer applies — replace it with something like "NPS server certificate issued
-(`NPS Server Authentication`, `UnreadLines Issuing CA`) and bound to `UnreadLines-Mobile - EAP-TLS`; SSID
-activation still pending `RAP01` switch-over." Leave the `Status` column as-is until `UnreadLines-Mobile` is
-actually live — this lab removes one blocker, not all of them.
+(`NPS Server Authentication`, `UnreadLines Issuing CA`), autoenrolled/renewed via `PKI - NPS Autoenrollment`, and
+bound to `UnreadLines-Mobile - EAP-TLS`; SSID activation still pending `RAP01` switch-over." Leave the `Status`
+column as-is until `UnreadLines-Mobile` is actually live — this lab removes one blocker, not all of them.
 
 ## Next Step
 
