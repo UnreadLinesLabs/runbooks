@@ -3,8 +3,8 @@
 🎥 Video: [Add your YouTube link]  
 🏷️ Theme: CLOUD & INFRA
 
-📅 Last verified: 2026-07-14  
-📝 Update log: Initial draft for template-based VM preparation
+📅 Last verified: 2026-08-28  
+📝 Update log: Added SSH host key verification/recovery section, pre-cleanup SSH sanity check, and openssh-server prerequisite
 
 ## Overview
 
@@ -93,6 +93,13 @@ sudo apt update
 sudo apt full-upgrade
 ```
 
+Make sure `openssh-server` is installed and enabled, since it will be required for SSH access after cloning:
+
+```bash
+sudo apt install -y openssh-server cloud-init
+sudo systemctl enable ssh
+```
+
 ### 4. Verify and install cloud-init
 
 Check whether cloud-init is installed:
@@ -113,7 +120,18 @@ sudo apt install cloud-init -y
 
 ### 5. Clean the Ubuntu template
 
-Run the following commands only when the VM is ready to become a template:
+Run the following commands only when the VM is ready to become a template.
+
+Before cleaning, verify SSH is healthy on the source VM itself. This makes it
+possible to tell apart a problem that already existed in the template from one
+caused by the clone's first boot:
+
+```bash
+sudo sshd -t
+sudo systemctl status ssh
+```
+
+Then proceed with the cleanup:
 
 ```bash
 sudo apt autoremove --purge -y
@@ -125,7 +143,16 @@ sudo truncate -s 0 /etc/machine-id
 sudo rm -f /var/lib/dbus/machine-id
 
 sudo rm -f /etc/ssh/ssh_host_*
+```
 
+> [!IMPORTANT]
+> Do not regenerate the SSH host keys before shutting down the template. They
+> must be unique for every cloned VM. The keys should normally be regenerated
+> by cloud-init during the first boot. If that does not happen, use the SSH
+> recovery procedure described in
+> [Verify SSH after the first boot of an Ubuntu clone](#verify-ssh-after-the-first-boot-of-an-ubuntu-clone).
+
+```bash
 sudo journalctl --rotate
 sudo journalctl --vacuum-time=1s
 
@@ -150,6 +177,139 @@ When the platform provides valid cloud-init data, the first boot can:
 - Run initial setup commands
 
 Without a supported datasource, the clone will typically keep the existing hostname and user configuration and will not behave like a Sysprep-driven Windows deployment.
+
+### Verify SSH after the first boot of an Ubuntu clone
+
+During template preparation, the SSH host keys are intentionally removed:
+
+```bash
+sudo rm -f /etc/ssh/ssh_host_*
+```
+
+On a correctly configured cloud-init deployment, new SSH host keys should be
+generated automatically on the first boot of the cloned VM.
+
+However, on some platforms or lab environments, cloud-init may not regenerate
+the keys correctly. In that case, the SSH service can fail with an error such
+as:
+
+```text
+sshd: no hostkeys available -- exiting
+```
+
+Check the SSH service:
+
+```bash
+sudo systemctl status ssh
+```
+
+Validate the SSH server configuration directly:
+
+```bash
+sudo sshd -t
+```
+
+If the output contains `sshd: no hostkeys available -- exiting`, regenerate
+the SSH host keys:
+
+```bash
+sudo ssh-keygen -A
+```
+
+Verify that the keys now exist:
+
+```bash
+ls -l /etc/ssh/ssh_host_*
+```
+
+You should see files similar to:
+
+```text
+/etc/ssh/ssh_host_ed25519_key
+/etc/ssh/ssh_host_ed25519_key.pub
+/etc/ssh/ssh_host_rsa_key
+/etc/ssh/ssh_host_rsa_key.pub
+```
+
+Run the SSH configuration test again:
+
+```bash
+sudo sshd -t
+```
+
+If no output is returned, the configuration is valid.
+
+If SSH instead reports:
+
+```text
+Missing privilege separation directory: /run/sshd
+```
+
+create the runtime directory:
+
+```bash
+sudo mkdir -p /run/sshd
+sudo chmod 755 /run/sshd
+```
+
+Then validate the configuration again:
+
+```bash
+sudo sshd -t
+```
+
+Restart the SSH service:
+
+```bash
+sudo systemctl restart ssh
+```
+
+Confirm that it is running:
+
+```bash
+sudo systemctl status ssh
+```
+
+Finally, verify that SSH is listening on TCP port 22:
+
+```bash
+sudo ss -lntp | grep ':22'
+```
+
+A successful result shows `sshd` listening on port 22.
+
+#### Quick recovery commands
+
+If a cloned Ubuntu VM boots without working SSH, the following commands
+usually restore the service:
+
+```bash
+sudo ssh-keygen -A
+sudo mkdir -p /run/sshd
+sudo chmod 755 /run/sshd
+sudo sshd -t
+sudo systemctl restart ssh
+sudo systemctl status ssh
+```
+
+#### Important
+
+Do not generate SSH host keys again on the original template before
+converting it to a template. Each clone must end up with its own unique SSH
+host keys — generating them once on the template and cloning that state would
+make every clone share the same server identity.
+
+If this issue occurs repeatedly, verify that cloud-init is running correctly:
+
+```bash
+cloud-init status --long
+```
+
+and inspect its logs:
+
+```bash
+sudo journalctl -u cloud-init -u cloud-final --no-pager
+```
 
 ### Manual hostname and IP configuration for a classic lab
 
@@ -297,6 +457,10 @@ The method used to provide cloud-init data depends on the virtualization platfor
 - Reusing a password or SSH key that should be unique per clone.
 - Leaving the template joined to a production domain.
 - Using the wrong interface name in Netplan examples.
+- Assuming SSH host keys will always be regenerated automatically after cloning.
+- Not verifying the SSH service after the first boot of an Ubuntu clone.
+- Generating SSH host keys inside the template itself, which would cause clones
+  to share the same server identity.
 
 ## References
 
