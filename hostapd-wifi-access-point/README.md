@@ -583,14 +583,48 @@ This adapter can only run **one SSID at a time** (§5.4) — that constraint doe
 
 (Names above are a proposal, not yet finalized — adjust freely if a different scheme fits the fleet better.)
 
-Building `UnreadLines-Mobile` follows the same pattern as SSID#1 — a new, dedicated VMware network (e.g. `VMnet4`) rather than a VLAN (§11), on a new subnet (e.g. `192.168.22.0/25`):
+### Addressing plan for the Wi-Fi segments
+
+One `/25` per SSID, allocated sequentially from `192.168.21.0`, mirroring the way the LAB network splits
+`192.168.20.0/24` into two `/25` subnets:
+
+| VMware network | Subnet | SSID | Status |
+| --- | --- | --- | --- |
+| `VMnet3` | `192.168.21.0/25` | `UnreadLines-Guest` | In service |
+| `VMnet4` | `192.168.21.128/25` | `UnreadLines-Mobile` | To build |
+| `VMnet5` | `192.168.22.0/25` | `UnreadLines-Corp` | Reserved |
+
+`reference/vm-inventory.md` §3 is the authoritative record of this table.
+
+### Why each SSID gets its own network, even though only one runs at a time
+
+The single-radio limit means `UnreadLines-Guest` and `UnreadLines-Mobile` are never live simultaneously,
+so one shared network would carry the traffic just as well. They still get one each, because a VMware
+network here is not just a wire — it is a **firewall zone and a DHCP scope on `FWL02`**, and the two
+SSIDs do not deserve the same ones. `UnreadLines-Guest` carries unmanaged personal devices and is
+allowed out to the Internet and nowhere else. `UnreadLines-Mobile` carries Intune-managed devices
+authenticated by certificate, which have business reaching internal resources.
+
+Sharing one network would mean rewriting `FWL02`'s zone and DHCP configuration at every SSID swap,
+in both directions, instead of changing a single `bridge=` line in `hostapd.conf`. It would also put
+guest and managed devices in the same broadcast domain — the exact arrangement an enterprise SSID
+exists to avoid.
+
+And the constraint is temporary: adding a second physical Wi-Fi adapter makes both SSIDs concurrent, at
+which point separate segments stop being a design preference and become a requirement. Building them
+separately now costs nothing that the swap does not already cost.
+
+### Building it
+
+Building `UnreadLines-Mobile` follows the same pattern as SSID#1 — a new, dedicated VMware network
+(`VMnet4`) rather than a VLAN (§11), on `192.168.21.128/25`:
 
 1. Create `VMnet4` and attach it to `RAP01` and `FWL02`, same process as §6.
-2. Add the new interface to `RAP01`'s Netplan and to `FWL02` (§5.5 / §8), same pattern as SSID#1.
+2. Add the new interface to `RAP01`'s Netplan and to `FWL02` (§5.5 / §8), same pattern as SSID#1 — its own firewall zone and DHCP scope, not a copy of the guest one.
 3. `sudo systemctl stop hostapd` on `RAP01`; edit `/etc/hostapd/hostapd.conf` to point at `UnreadLines-Mobile`, switch to `ieee8021x=1` / `wpa_key_mgmt=WPA-EAP` with the RADIUS IP/shared secret, and change `bridge=br-vlan10` to the new bridge; `sudo systemctl start hostapd`. `UnreadLines-Guest` goes offline while it's active.
 4. Update `reference/vm-inventory.md` accordingly.
 
-`UnreadLines-Corp` (workstations) is the same build, later — another dedicated VMware network, another subnet, same swap-in mechanism. Both remain single-BSS constrained until a second physical Wi-Fi adapter is added, at which point any two of these three SSIDs could run concurrently.
+`UnreadLines-Corp` (workstations) is the same build, later — `VMnet5` on `192.168.22.0/25`, same swap-in mechanism. Both remain single-BSS constrained until a second physical Wi-Fi adapter is added, at which point any two of these three SSIDs could run concurrently.
 
 The PKI that work depends on is `ad-cs-pki-deployment/README.md`; its certificate and Intune side is not yet covered by a runbook here.
 

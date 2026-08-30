@@ -34,9 +34,10 @@ Each SSID gets its own dedicated VMware host-only network between `RAP01` and `F
 | Network | Purpose | Subnet | Gateway/DHCP | Status |
 | --- | --- | --- | --- | --- |
 | `VMnet3` | SSID#1 — WPA2/WPA3-Personal (`UnreadLines-Guest`) | `192.168.21.0/25` | `FWL02` (`eth2`, `192.168.21.1`) | Active |
-| `VMnet4` (planned) | `UnreadLines-Mobile` — WPA2/WPA3-Enterprise (802.1X EAP-TLS) | `192.168.21.128/25`* | `FWL02` (new interface, not yet created) | Reserved, not yet active |
+| `VMnet4` (planned) | `UnreadLines-Mobile` — WPA2/WPA3-Enterprise (802.1X EAP-TLS) | `192.168.21.128/25` | `FWL02` (new interface, not yet created) | Reserved, not yet active |
+| `VMnet5` (planned) | `UnreadLines-Corp` — WPA2/WPA3-Enterprise (802.1X EAP-TLS), domain-joined workstations | `192.168.22.0/25` | `FWL02` (new interface, not yet created) | Reserved, not yet active |
 
-*`hostapd-wifi-access-point/README.md` §15 gives `192.168.22.0/25` as its own example subnet for this network — reconcile the two before `VMnet4` is actually built, this table hasn't been updated to match yet.
+**Allocation rule:** one `/25` per SSID, taken sequentially from `192.168.21.0` — the same split the LAB network uses on `192.168.20.0/24`. Each SSID gets its own VMware network because that network carries its own firewall zone and DHCP scope on `FWL02`, not because the SSIDs run at the same time: the single radio on `RAP01` means only one is ever live. `hostapd-wifi-access-point/README.md` §15 explains the reasoning in full.
 
 Full deployment detail: see the hostapd Wi-Fi AP lab and the `radius-nps-deployment` lab (RADIUS/NPS server). The future certificate-based SSID is not yet covered by a runbook.
 
@@ -47,7 +48,8 @@ Full deployment detail: see the hostapd Wi-Fi AP lab and the `radius-nps-deploym
 | Subnet 1 (`192.168.20.0/25`) | `.1`–`.126` | `.47` |
 | Subnet 2 (`192.168.20.128/25`) | `.129`–`.254` | `.146` |
 | SSID#1 / `VMnet3` (`192.168.21.0/25`) | `.1`–`.126` | static range `.1`–`.9` (`.1` = `FWL02` `eth2`, `.2` = `RAP01` `br-vlan10`, optional/diagnostic); DHCP pool `.50`–`.99` (see hostapd lab) |
-| `UnreadLines-Mobile` / `VMnet4` (`192.168.21.128/25`, reserved — see note above) | `.129`–`.254` | static range `.129`–`.137`; DHCP pool `.178`–`.228` (reserved, not yet built) |
+| `UnreadLines-Mobile` / `VMnet4` (`192.168.21.128/25`, reserved) | `.129`–`.254` | static range `.129`–`.137`; DHCP pool `.178`–`.228` (reserved, not yet built) |
+| `UnreadLines-Corp` / `VMnet5` (`192.168.22.0/25`, reserved) | `.1`–`.126` | not yet allocated |
 
 ---
 
