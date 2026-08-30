@@ -5,7 +5,7 @@
 
 ---
 
-## 1. Entities and Sites
+## 1. Entities and sites
 
 Codes used across OUs, groups, servers, delegations, and GPOs — **not** in human account identifiers (see §4):
 
@@ -20,9 +20,9 @@ BDX = Bordeaux
 
 ---
 
-## 2. Server Naming Convention
+## 2. Server naming convention
 
-### Naming Format
+### Naming format
 
 ```text
 [A][NN][CITY]VM[ROLE][NN]
@@ -45,7 +45,7 @@ U01PARVMDOM01
 | `ROLE` | Three-letter server role | `DOM` |
 | `NN` | Server sequence number | `01` |
 
-### Server Role Codes
+### Server role codes
 
 | Code | Role |
 | --- | --- |
@@ -71,7 +71,7 @@ U01PARVMFWL01
 U01PARVMRAP01
 ```
 
-### Naming Rules
+### Naming rules
 
 - Use uppercase ASCII letters and numbers.
 - Do not use spaces, accents, underscores, or special characters.
@@ -85,7 +85,7 @@ This naming convention is an internal infrastructure policy. Microsoft does not 
 
 ---
 
-## 3. Organizational Unit (OU) Structure
+## 3. Organizational unit (OU) structure
 
 Site and entity codes (§1) structure the OU tree; they are not carried into human account names.
 
@@ -104,7 +104,7 @@ A user can physically sit in `OU=Users,OU=PAR,OU=U01,OU=UnreadLines,DC=corp,DC=u
 
 ---
 
-## 4. Group Naming Convention
+## 4. Group naming convention
 
 ```text
 GG-U01-PAR-Users
@@ -126,7 +126,7 @@ Add-ADGroupMember    GG-U01-BDX-ADM-Servers a783476512
 
 ---
 
-## 5. Account Naming — Full Taxonomy
+## 5. Account naming — full taxonomy
 
 **Principle**: human account names never encode entity or site. Administrative scope is carried entirely by group membership (§4) and delegation, so an administrator can change scope without being renamed. A convention encoding the site directly in the account (e.g. `U01PARA7834767`) was considered and rejected for this reason.
 
@@ -183,7 +183,7 @@ Never let a single account be both the daily-driver identity and Domain Admin / 
 
 ---
 
-## 6. Open Point — Numeric ID Generation
+## 6. Open point — numeric ID generation
 
 Not yet defined by this convention:
 
@@ -194,7 +194,7 @@ This should be resolved (with an owner and a tool/process) before the convention
 
 ---
 
-## 7. PowerShell Validation
+## 7. PowerShell validation
 
 Validate a proposed server name:
 
@@ -223,7 +223,7 @@ else {
 }
 ```
 
-## 8. Rename a Windows Server
+## 8. Rename a Windows server
 
 Run PowerShell as Administrator before installing or promoting the server as a domain controller:
 
@@ -236,3 +236,7 @@ Confirm the name after the restart:
 ```powershell
 $env:COMPUTERNAME
 ```
+
+---
+
+*Part of [UnreadLines Labs](https://youtube.com/@unreadlineslabs) — real-world enterprise infrastructure, identity, and security labs, documented the way nobody else bothers to.*

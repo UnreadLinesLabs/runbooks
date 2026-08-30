@@ -1,29 +1,14 @@
-# VMware Workstation Pro + OpenWrt Network Lab — PC1 and PC2 with a WireGuard Tunnel
+# Build an OpenWrt network lab with a WireGuard site-to-site tunnel
 
 This document describes, **from scratch**, how to set up a network lab spread across **two physical PCs**, each hosting an **OpenWrt x86-64** router/firewall inside **VMware Workstation Pro** on Windows.
 
 It is designed to be reproducible: you can delete the VMs, start again from the original OpenWrt images, and redo every step to validate the procedure end to end, on both PCs.
 
-Each PC hosts an isolated LAB network (`192.168.20.0/25` on PC1, `192.168.20.128/25` on PC2), routed to the Internet by its own OpenWrt over Wi-Fi. The two LABs are then linked together by a **WireGuard tunnel** set up directly between the two WAN addresses, which works around a limitation of the VMware bridge over Wi-Fi (explained in section 19).
+Each PC hosts an isolated LAB network (`192.168.20.0/25` on PC1, `192.168.20.128/25` on PC2), routed to the Internet by its own OpenWrt over Wi-Fi. The two LABs are then linked together by a **WireGuard tunnel** set up directly between the two WAN addresses, which works around a limitation of the VMware bridge over Wi-Fi (explained in §20).
 
 ---
 
-## 1. Lab objective
-
-```text
-- One OpenWrt router per PC, with its own WAN leg (Wi-Fi/Freebox) and its
-  own LAN leg (private VMware network).
-- One /25 LAB subnet per PC, routed and NATed to the Internet by its own
-  OpenWrt.
-- No LAB VM directly bridged or on VMware NAT: everything goes through
-  OpenWrt.
-- The two LABs linked together via a WireGuard tunnel between the two
-  WANs, so VMs on both PCs can reach each other.
-```
-
----
-
-## 2. Target architecture
+## 1. Architecture
 
 ```text
                                        +----------------------------------+
@@ -76,7 +61,29 @@ Each OpenWrt acts as the gateway, NAT, and firewall for its own LAB. The WireGua
 
 ---
 
-## 3. Full addressing plan
+## 2. Scope and dependencies
+
+```text
+- One OpenWrt router per PC, with its own WAN leg (Wi-Fi/Freebox) and its
+  own LAN leg (private VMware network).
+- One /25 LAB subnet per PC, routed and NATed to the Internet by its own
+  OpenWrt.
+- No LAB VM directly bridged or on VMware NAT: everything goes through
+  OpenWrt.
+- The two LABs linked together via a WireGuard tunnel between the two
+  WANs, so VMs on both PCs can reach each other.
+```
+
+This is the **foundation** runbook of the repository: it creates the two `/25` subnets and the routing
+between them that every later runbook takes for granted. `reference/vm-inventory.md` records the
+resulting topology, and every server built afterwards sits in one of the two subnets defined here.
+
+It does **not** deploy any of those servers, join anything to a domain, or serve Wi-Fi clients —
+`hostapd-wifi-access-point/README.md` adds the wireless segment on top of `FWL02` later.
+
+---
+
+## 3. Target configuration — full addressing plan
 
 | Element                            | PC1 / FWL01            | PC2 / FWL02             |
 | ------------------------------------ | ------------------------ | -------------------------- |
@@ -127,11 +134,27 @@ For this lab, a VM with **1 vCPU and 512 MB of RAM** is more than enough, on eac
 
 ---
 
-## 5. Download and convert the OpenWrt image
+## 5. Prerequisites
+
+- Two Windows PCs, each with **VMware Workstation Pro** installed and licensed —
+  `create-broadcom-account/README.md` covers obtaining the download.
+- Both PCs on the same home Wi-Fi network, reaching the Internet through the same router
+  (`192.168.1.254` in this lab).
+- An **OpenWrt x86-64** image; §6 downloads and converts it.
+- **StarWind V2V Converter** on at least one PC, to turn the OpenWrt `.img` into a `.vmdk`.
+- Local administrator rights on both Windows hosts — creating VMware networks and adding a persistent
+  static route both require them.
+
+Nothing else needs to exist first: this is the foundation runbook, and every other runbook in this
+repository assumes the topology it builds.
+
+---
+
+## 6. Download and convert the OpenWrt image
 
 This step is identical on PC1 and PC2: each PC needs its own `.vmdk` file, produced the same way.
 
-### 5.1 Download the image
+### 6.1 Download the image
 
 The current stable branch is **OpenWrt 25.12**, current version **25.12.5**. For VMware x86-64, download the **BIOS/non-EFI** variant:
 
@@ -153,11 +176,11 @@ Get-FileHash .\openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz -Algorithm SH
 
 > If a newer stable version exists by the time the lab is rebuilt, use the latest stable release and adjust the file names in the following steps.
 
-### 5.2 Decompress the image
+### 6.2 Decompress the image
 
 With 7-Zip: right-click the `.img.gz` file → `7-Zip` → `Extract Here`. You get an `.img` file, a raw disk image.
 
-### 5.3 Convert IMG → VMDK with StarWind V2V Converter
+### 6.3 Convert IMG → VMDK with StarWind V2V Converter
 
 VMware Workstation Pro uses `.vmdk` disks. The official OpenWrt documentation describes a conversion with `qemu-img`; this lab uses **StarWind V2V Converter** instead, to avoid installing QEMU.
 
@@ -175,11 +198,11 @@ The **growable** mode allocates disk space as it is used. Repeat this conversion
 
 ---
 
-## 6. Prepare the VMware networks (on each PC)
+## 7. Prepare the VMware networks (on each PC)
 
 The goal is for **VMware to do neither NAT nor DHCP in OpenWrt's place** on the LAB network. This section must be done on both PC1 and PC2, with each PC's own values.
 
-### 6.1 Recap of VMware networks
+### 7.1 Recap of VMware networks
 
 ```text
 VMnet0 = Bridged     → link to the physical network / Freebox
@@ -189,7 +212,7 @@ VMnet8 = VMware NAT  → not used here
 
 **VMnet2** is deliberately created instead of reusing VMnet8, which is normally associated with VMware's own NAT.
 
-### 6.2 Create VMnet2
+### 7.2 Create VMnet2
 
 In `Edit → Virtual Network Editor → Add Network → VMnet2`, then configure:
 
@@ -204,7 +227,7 @@ In `Edit → Virtual Network Editor → Add Network → VMnet2`, then configure:
 
 `Host-only` does not mean the VMs will be cut off from the Internet: VMnet2 simply provides a private virtual Ethernet switch between the Windows host, OpenWrt's LAN leg, and the lab VMs. OpenWrt then handles the routing to the Internet.
 
-### 6.3 Configure Windows' VMnet2 interface
+### 7.3 Configure Windows' VMnet2 interface
 
 On Windows (`Win + R` → `ncpa.cpl`), open the properties of `VMware Network Adapter VMnet2` and configure IPv4:
 
@@ -217,7 +240,7 @@ On Windows (`Win + R` → `ncpa.cpl`), open the properties of `VMware Network Ad
 
 This Windows interface must have **no gateway at all**: the PC's Internet connection must keep using its normal Wi-Fi connection.
 
-### 6.4 Configure the VMware bridge onto Wi-Fi
+### 7.4 Configure the VMware bridge onto Wi-Fi
 
 In `Edit → Virtual Network Editor → VMnet0`:
 
@@ -233,7 +256,7 @@ Do this identically on PC1 and PC2, each bridging to its own Wi-Fi adapter.
 
 ---
 
-## 7. Create the OpenWrt VMs (FWL01 and FWL02)
+## 8. Create the OpenWrt VMs (FWL01 and FWL02)
 
 On each PC: `Create a New Virtual Machine → Custom (advanced) → I will install the operating system later`.
 
@@ -248,17 +271,17 @@ On each PC: `Create a New Virtual Machine → Custom (advanced) → I will insta
 
 The **BIOS** firmware matches the non-EFI `generic-ext4-combined` image used in this tutorial.
 
-### 7.1 Disk
+### 8.1 Disk
 
 Choose `Use an existing virtual disk`, then select the matching `.vmdk` (`U01PARVMFWL01.vmdk` on PC1, `U01PARVMFWL02.vmdk` on PC2). If VMware asks `Convert` or `Keep Existing Format`, choose **`Keep Existing Format`**.
 
-### 7.2 CD/DVD drive
+### 8.2 CD/DVD drive
 
 OpenWrt boots directly from the VMDK, no ISO is needed. Uncheck `Connect at power on` on the CD/DVD drive (`VM Settings → CD/DVD`), to avoid VMware messages about an unavailable SATA/CD-ROM device.
 
 ---
 
-## 8. Configure the VMs' network adapters
+## 9. Configure the VMs' network adapters
 
 The order of the adapters is **deliberate and matters on first boot**, identically on both VMs.
 
@@ -286,7 +309,7 @@ A fresh OpenWrt x86 install normally uses its first interface as the LAN and boo
 
 ---
 
-## 9. First boot and LAN configuration
+## 10. First boot and LAN configuration
 
 Start the VM. After boot, you should get `root@OpenWrt:~#`. The console uses a US keyboard layout and BusyBox may not support certain command variants (`ip -br`, for instance) — use the plain forms `ip addr show` and `uci show network`.
 
@@ -314,7 +337,7 @@ Check with `ip addr show br-lan` that the expected address appears.
 
 ---
 
-## 10. Access the router over SSH
+## 11. Access the router over SSH
 
 The Windows host already has its IP on VMnet2 (`192.168.20.1` on PC1, `192.168.20.129` on PC2). From PowerShell:
 
@@ -340,7 +363,7 @@ From this point on, all configuration can be done by copy/pasting over SSH, on b
 
 ---
 
-## 11. Configure the hostname
+## 12. Configure the hostname
 
 **FWL01:**
 
@@ -360,7 +383,7 @@ uci commit system
 
 ---
 
-## 12. Configure the WAN toward the Freebox
+## 13. Configure the WAN toward the Freebox
 
 **FWL01:**
 
@@ -396,7 +419,7 @@ uci commit network                                # writes the changes to /etc/c
 
 ---
 
-## 13. Basic network checks
+## 14. Basic network checks
 
 Run on **each** router:
 
@@ -432,7 +455,7 @@ ping -c 3 openwrt.org     # DNS OK
 
 ---
 
-## 14. Firewall and NAT (masquerading)
+## 15. Firewall and NAT (masquerading)
 
 OpenWrt provides, by default on both routers, a standard policy:
 
@@ -459,7 +482,7 @@ Never remove masquerading from the WAN zone, or you'll cut off that LAB's Intern
 
 ---
 
-## 15. Accessing LuCI
+## 16. Accessing LuCI
 
 From Windows: `http://192.168.20.126` (PC1) or `http://192.168.20.254` (PC2).
 
@@ -477,7 +500,7 @@ In LuCI, check `Network → Interfaces` (LAN and WAN with the right addresses) t
 
 ---
 
-## 16. LAB DHCP: an explicit choice to make
+## 17. LAB DHCP: an explicit choice to make
 
 VMware DHCP must stay disabled on VMnet2, on both PCs. From there, two options, either one, identical on PC1 and PC2:
 
@@ -489,7 +512,7 @@ In an Active Directory environment, domain clients should use the domain's DNS r
 
 ---
 
-## 17. Configure the LAB VMs
+## 18. Configure the LAB VMs
 
 On each PC, every LAB VM uses **a single network adapter**, on `VMnet2` (never `Bridged` nor `NAT/VMnet8` — OpenWrt is the sole router to the outside world).
 
@@ -513,7 +536,7 @@ DNS        : depends on the lab
 
 ---
 
-## 18. Full connectivity tests
+## 19. Full connectivity tests
 
 **From the LAB1 example VM (`192.168.20.41`):**
 
@@ -553,7 +576,7 @@ At this stage, each LAB has independent Internet access. What remains is linking
 
 ---
 
-## 19. Why direct routing between LAB1 and LAB2 doesn't work natively
+## 20. Why direct routing between LAB1 and LAB2 doesn't work natively
 
 A natural attempt is to add, on each OpenWrt, a static route to the remote network via the other router's WAN IP (`192.168.20.128/25 via 192.168.1.251` on FWL01, and the reverse on FWL02). This route is correct from Linux's point of view — `ip route get` confirms the right next hop — and the standard firewall (LAN→WAN forwarding, `Allow-Ping` rule) doesn't block anything.
 
@@ -580,7 +603,7 @@ The only path that reliably works through this bridge is the one already validat
 
 ---
 
-## 20. WireGuard tunnel between FWL01 and FWL02
+## 21. WireGuard tunnel between FWL01 and FWL02
 
 The WireGuard tunnel encapsulates all `192.168.20.0/25 ↔ 192.168.20.128/25` traffic inside a UDP session addressed directly between the two WANs:
 
@@ -590,7 +613,7 @@ FWL01 WAN 192.168.1.250  ⇄  FWL02 WAN 192.168.1.251
 
 The VMware bridge then only ever sees UDP traffic addressed to the WAN IPs it already knows how to relay correctly (section 19) — the routed traffic that was the problem is invisible to it, hidden inside the tunnel.
 
-### 20.1 Package manager and kernel module
+### 21.1 Package manager and kernel module
 
 On OpenWrt 25.12.5, `opkg` no longer exists: the default package manager is `apk`. The `luci-app-wireguard` package doesn't exist under that name on this branch either — LuCI's WireGuard support comes through `luci-proto-wireguard`, and isn't needed anyway since all configuration is done via `uci`.
 
@@ -601,7 +624,7 @@ modprobe wireguard
 echo $?     # 0 = module available
 ```
 
-### 20.2 Installation
+### 21.2 Installation
 
 On **FWL01** and **FWL02**:
 
@@ -610,7 +633,7 @@ apk update
 apk add wireguard-tools
 ```
 
-### 20.3 Key generation
+### 21.3 Key generation
 
 On each router, with a file name that identifies the **local** router (to avoid any mix-up when copy/pasting between the two SSH sessions):
 
@@ -622,7 +645,7 @@ cat /etc/wireguard_local.pub
 
 Each router needs to obtain the other's **public** key before continuing.
 
-### 20.4 UCI configuration — FWL01
+### 21.4 UCI configuration — FWL01
 
 ```sh
 uci set network.wg0=interface                      # creates the "wg0" section (type interface)
@@ -669,7 +692,7 @@ uci commit firewall
 /etc/init.d/firewall restart
 ```
 
-### 20.5 UCI configuration — FWL02
+### 21.5 UCI configuration — FWL02
 
 Mirror configuration (same explanations as 20.4, with the values swapped):
 
@@ -718,11 +741,11 @@ uci commit firewall
 /etc/init.d/firewall restart
 ```
 
-### 20.6 Why `route_allowed_ips='1'` is enough
+### 21.6 Why `route_allowed_ips='1'` is enough
 
 This parameter tells `netifd` to automatically add a route to `wg0` for every `allowed_ips` entry on the peer. There's no need for manual static routes toward `wan` (those would point at the bridged path that fails, see section 19): the routes generated here point at `wg0`, which encapsulates the traffic inside the UDP session addressed directly between the two WANs.
 
-### 20.7 Verifying the tunnel
+### 21.7 Verifying the tunnel
 
 ```sh
 wg show                 # a recent "latest handshake" should appear on both sides
@@ -730,7 +753,7 @@ ping -c 3 10.10.10.2    # from FWL01
 ping -c 3 10.10.10.1    # from FWL02
 ```
 
-### 20.8 Operational notes
+### 21.8 Operational notes
 
 ```text
 - persistent_keepalive='25' keeps the VMware bridge state and any Freebox
@@ -742,7 +765,7 @@ ping -c 3 10.10.10.1    # from FWL02
 
 ---
 
-## 21. Full end-to-end verification
+## 22. Full end-to-end verification
 
 ```powershell
 # from a LAB1 VM, e.g. 192.168.20.41
@@ -766,7 +789,7 @@ LAB1 ↔ LAB2 (e.g. .41 ↔ .131)          : OK (via wg0)
 
 ---
 
-## 22. Back up the OpenWrt configuration
+## 23. Back up the OpenWrt configuration
 
 Once each router is validated, take a backup before adding VLANs, extra firewall rules, or inter-site routing.
 
@@ -782,7 +805,7 @@ Retrieve the file before making any deep changes to the lab.
 
 ---
 
-## 23. Best practices and pitfalls to avoid
+## 24. Best practices and pitfalls to avoid
 
 ```text
 - Don't put lab VMs on VMnet8 (VMware NAT): that role belongs to OpenWrt.
@@ -802,7 +825,7 @@ Retrieve the file before making any deep changes to the lab.
 
 ---
 
-## 24. Full deployment checklist
+## 25. Full deployment checklist
 
 ### PC1 / FWL01
 
@@ -838,7 +861,7 @@ Retrieve the file before making any deep changes to the lab.
 
 ---
 
-## 25. Useful diagnostic commands
+## 26. Useful diagnostic commands
 
 ### OpenWrt — interfaces and routing
 
@@ -903,7 +926,7 @@ udp.port == 51820
 
 ---
 
-## 26. Access from the host PCs to the remote LAB
+## 27. Access from the host PCs to the remote LAB
 
 The WireGuard tunnel correctly links the VMs of both LABs together. But by default, the **host PCs themselves** (not the VMs) can reach VMs on their own local LAB, but not those on the remote LAB (SSH, RDP, etc.), even when the tunnel is working perfectly.
 
@@ -943,7 +966,7 @@ The route should show up both in the active routing table and in the "Persistent
 
 ---
 
-## References
+## 28. References
 
 * OpenWrt — 25.12 stable branch: `https://openwrt.org/releases/25.12/start`
 * Official OpenWrt x86-64 images: `https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/`
@@ -951,3 +974,7 @@ The route should show up both in the active routing table and in the "Persistent
 * OpenWrt package management: `https://openwrt.org/docs/guide-user/additional-software/managing_packages`
 * WireGuard on OpenWrt: `https://openwrt.org/docs/guide-user/services/vpn/wireguard/start`
 * StarWind V2V Converter — VMDK conversion: `https://www.starwindsoftware.com/v2v-help/CovertingtoVMDK.html`
+
+---
+
+*Part of [UnreadLines Labs](https://youtube.com/@unreadlineslabs) — real-world enterprise infrastructure, identity, and security labs, documented the way nobody else bothers to.*
