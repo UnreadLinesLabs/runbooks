@@ -1,0 +1,14 @@
+# Normalize every text file to LF, in the repository and in the working tree.
+# Without this, a Windows editor can rewrite a whole README with CRLF and turn a
+# one-line fix into a several-thousand-line diff that destroys `git blame`.
+* text=auto eol=lf
+
+# Binary assets — never normalized.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pdf  binary
+*.crt  binary
+*.cer  binary
+*.pfx  binary
