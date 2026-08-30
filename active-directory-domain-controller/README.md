@@ -1,10 +1,55 @@
-# Deploy the First Active Directory Domain Controller
+# Deploy the first Active Directory domain controller
 
 This procedure deploys the first domain controller and the first forest for a professional lab environment.
 
 The procedure is written for a fresh Windows Server VM. It must not be performed on a server that is already joined to another domain, is already a domain controller, or hosts unrelated application roles.
 
-## Target Configuration
+## 1. Architecture
+
+```text
+                  U01PARVMFWL01 — OpenWrt router
+                  default gateway and upstream DNS
+                          192.168.20.126
+                                   |
+                     Subnet 1 — 192.168.20.0/25
+                                   |
+                            U01PARVMDOM01
+                            192.168.20.41
+              +--------------------------------------------+
+              |  AD DS — first forest of the environment   |
+              |  Forest / domain : corp.unreadlines.com    |
+              |  NetBIOS         : UNREADLINES             |
+              |                                            |
+              |  DNS — authoritative for the AD zone,      |
+              |  forwards everything else upstream         |
+              +--------------------------------------------+
+```
+
+The DNS client setting on this server changes once during the build, and only that setting:
+
+```text
+before installing AD DS/DNS ....  192.168.20.126   (upstream resolver)
+after  installing AD DS/DNS ....  192.168.20.41  (itself)
+```
+
+## 2. Scope and dependencies
+
+This runbook builds the **first** domain controller and the first forest: it installs AD DS on
+`U01PARVMDOM01`, creates `corp.unreadlines.com`, stands up the DNS service that comes with it, and
+validates resolution inside and outside the domain.
+
+It does **not** add a second domain controller, configure Sites and Services, create the organizational
+unit structure, or join any client to the domain. It also deliberately installs nothing else here: PKI,
+NPS/RADIUS, Entra Connect and application roles each belong on a dedicated server as the infrastructure
+grows — `ad-cs-pki-deployment/README.md` and `radius-nps-deployment/README.md` are built on separate
+machines for exactly that reason.
+
+Naming for the accounts, groups and OUs this forest will hold is defined in
+`reference/server-naming-convention.md`. The hybrid identity design that sits on top of it — including
+the `unreadlines.com` UPN suffix mentioned below — is in
+`reference/active-directory-entra-identity-design.md`.
+
+## 3. Target configuration
 
 | Item | Value |
 | --- | --- |
@@ -12,14 +57,23 @@ The procedure is written for a fresh Windows Server VM. It must not be performed
 | AD forest and domain | `corp.unreadlines.com` |
 | NetBIOS domain name | `UNREADLINES` |
 | IPv4 address | `192.168.20.41` |
-| Prefix length | `/24` |
-| Subnet mask | `255.255.255.0` |
-| Default gateway | `192.168.20.2` |
-| DNS forwarder | `192.168.20.2` |
+| Prefix length | `/25` |
+| Subnet mask | `255.255.255.128` |
+| Default gateway | `192.168.20.126` |
+| DNS forwarder | `192.168.20.126` |
+
+> **Note on the addressing.** This domain controller was first built when the lab was a single flat
+> `192.168.20.0/24` network with no router of its own, and the recording made at that time shows that
+> plan — a `/24` prefix and `192.168.20.2` as gateway and resolver. The lab has since been split into
+> two `/25` subnets behind a pair of OpenWrt routers
+> (`openwrt-wireguard-site-to-site/README.md`). The values in the table above are the current ones:
+> a `/25` prefix, with `U01PARVMFWL01` (`192.168.20.126`) as both default gateway and upstream DNS.
+> They are what the rest of this repository and `reference/vm-inventory.md` agree on — follow them
+> rather than the older figures if the two ever disagree.
 
 Use the DNS name `unreadlines.com` later as an alternate UPN suffix for Microsoft Entra integration. Do not use it as the AD forest name if the public DNS zone is used by other services.
 
-## Prerequisites
+## 4. Prerequisites
 
 - A supported, fully updated Windows Server installation.
 - A fresh VM with a unique virtual network identity.
@@ -29,20 +83,22 @@ Use the DNS name `unreadlines.com` later as an alternate UPN suffix for Microsof
 - The server is not joined to an existing domain.
 - The VM snapshot policy is understood before installing AD DS.
 
-## Initial Manual Preparation
+**Every command in this runbook runs on `U01PARVMDOM01`.**
+
+## 5. Initial manual preparation
 
 1. Configure the final IPv4 address and subnet mask manually:
     - IPv4 address: `192.168.20.41`
-    - Subnet mask: `255.255.255.0` (`/24`)
-    - Default gateway: `192.168.20.2`
-    - Temporary DNS server before AD DS/DNS installation: `192.168.20.2`
+    - Subnet mask: `255.255.255.128` (`/25`)
+    - Default gateway: `192.168.20.126`
+    - Temporary DNS server before AD DS/DNS installation: `192.168.20.126`
 2. Configure the final computer name manually: `U01PARVMDOM01`.
 3. Enable Remote Desktop manually so the server can be administered through mRemoteNG.
 4. Connect to the server with mRemoteNG and continue the remaining steps in an elevated PowerShell session.
 
-The IPv4 address is final from the beginning. Only the client DNS setting changes after AD DS/DNS installation: it changes from the upstream DNS server `192.168.20.2` to the local DNS service `192.168.20.41`.
+The IPv4 address is final from the beginning. Only the client DNS setting changes after AD DS/DNS installation: it changes from the upstream DNS server `192.168.20.126` to the local DNS service `192.168.20.41`.
 
-### Verify the Hostname and Network Configuration
+### 5.1 Verify the hostname and network configuration
 
 Before installing AD DS, verify the manually configured hostname, IP address, subnet prefix, gateway, and DNS server:
 
@@ -70,11 +126,11 @@ Confirm these values before continuing:
 ComputerName : U01PARVMDOM01
 IPv4Address  : 192.168.20.41
 PrefixLength : 24
-Gateway      : 192.168.20.2
-DnsServers   : 192.168.20.2
+Gateway      : 192.168.20.126
+DnsServers   : 192.168.20.126
 ```
 
-### Rename the Server with PowerShell
+### 5.2 Rename the server with PowerShell
 
 If the computer name was not configured manually, rename the server before installing AD DS:
 
@@ -92,7 +148,7 @@ $env:COMPUTERNAME
 
 Do not rename the server after it has been promoted to a domain controller.
 
-## Functional Levels and AD Schema
+## 6. Functional levels and AD schema
 
 These three concepts must not be confused:
 
@@ -118,7 +174,7 @@ The schema is forest-wide and should be extended only after testing application 
 
 Run PowerShell as Administrator.
 
-## 1. Install Active Directory Domain Services
+## 7. Install Active Directory Domain Services
 
 ```powershell
 Install-WindowsFeature `
@@ -126,7 +182,7 @@ Install-WindowsFeature `
     -IncludeManagementTools
 ```
 
-## 2. Create the First Forest and Domain Controller
+## 8. Create the first forest and domain controller
 
 The following command creates the first forest, installs DNS, and promotes the server as the first domain controller.
 
@@ -147,7 +203,7 @@ Install-ADDSForest `
 
 The server will restart automatically. Sign in with the domain Administrator account after the restart.
 
-## 3. Configure the Domain Controller DNS Client
+## 9. Configure the domain controller DNS client
 
 Discover the active interface again:
 
@@ -169,17 +225,17 @@ Set-DnsClientServerAddress `
 
 Do not use `127.0.0.1` as the documented DNS client address. The fixed server address makes the configuration explicit and easier to troubleshoot.
 
-## 4. Configure the DNS Forwarder
+## 10. Configure the DNS forwarder
 
 Add the upstream DNS server as a forwarder:
 
 ```powershell
 $Forwarder = Get-DnsServerForwarder |
-    Where-Object IPAddress -eq "192.168.20.2"
+    Where-Object IPAddress -eq "192.168.20.126"
 
 if (-not $Forwarder) {
     Add-DnsServerForwarder `
-        -IPAddress "192.168.20.2" `
+        -IPAddress "192.168.20.126" `
         -PassThru
 }
 ```
@@ -190,7 +246,7 @@ Confirm the forwarder:
 Get-DnsServerForwarder
 ```
 
-## 5. Validate the Deployment
+## 11. Validate the deployment
 
 Confirm the domain controller identity:
 
@@ -228,16 +284,33 @@ Resolve-DnsName -Name "corp.unreadlines.com" -Server "192.168.20.41"
 Resolve-DnsName -Name "microsoft.com" -Server "192.168.20.41"
 ```
 
-## Expected Final State
+## 12. Expected final state
 
 ```text
 Computer name : U01PARVMDOM01
 AD domain     : corp.unreadlines.com
 NetBIOS name  : UNREADLINES
-IPv4 address  : 192.168.20.41/24
-Gateway       : 192.168.20.2
+IPv4 address  : 192.168.20.41/25
+Gateway       : 192.168.20.126
 DNS client    : 192.168.20.41
-DNS forwarder : 192.168.20.2
+DNS forwarder : 192.168.20.126
 ```
 
 Do not install the PKI, Entra Connect, NPS, DHCP, or application roles on this domain controller. Add dedicated servers as the infrastructure grows.
+
+## 13. Update the infrastructure inventory
+
+Per `reference/server-naming-convention.md` §2, record the assigned name, role, site, IP address and
+owner in `reference/vm-inventory.md`. `U01PARVMDOM01` is already listed there as the AD DS/DNS server
+for Subnet 1 — confirm the row still matches what was actually deployed.
+
+## 14. References
+
+- [Install Active Directory Domain Services — Microsoft Learn](https://learn.microsoft.com/windows-server/identity/ad-ds/deploy/install-active-directory-domain-services--level-100-)
+- [`Install-ADDSForest` — Microsoft Learn](https://learn.microsoft.com/powershell/module/addsdeployment/install-addsforest)
+- [Forest and domain functional levels — Microsoft Learn](https://learn.microsoft.com/windows-server/identity/ad-ds/active-directory-functional-levels)
+- [DNS forwarders — Microsoft Learn](https://learn.microsoft.com/windows-server/networking/dns/quickstart-install-configure-dns-server)
+
+---
+
+*Part of [UnreadLines Labs](https://youtube.com/@unreadlineslabs) — real-world enterprise infrastructure, identity, and security labs, documented the way nobody else bothers to.*

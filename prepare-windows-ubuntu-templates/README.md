@@ -1,18 +1,43 @@
-# Prepare Windows and Ubuntu Virtual Machines as Templates
-
-🎥 Video: [Add your YouTube link]  
-🏷️ Theme: CLOUD & INFRA
-
-📅 Last verified: 2026-08-28  
-📝 Update log: Added SSH host key verification/recovery section, pre-cleanup SSH sanity check, and openssh-server prerequisite
-
-## Overview
+# Prepare Windows and Ubuntu virtual machines as templates
 
 This lab shows how to prepare a base Windows or Ubuntu virtual machine so it can be converted into a reusable template or golden image. The goal is to remove machine-specific data, shut the VM down safely, and make it ready for cloning or deployment on a hypervisor such as Proxmox VE, VMware vSphere, KVM, Hyper-V, or VirtualBox.
 
 This guide is intended for administrators, lab builders, and engineers who need clean, repeatable virtual machine images for testing, demonstrations, and production-like environments.
 
-## Prerequisites
+## 1. Architecture
+
+```text
+  Base VM (one per OS)                 Template                    Clones
+  ────────────────────                 ────────                    ──────
+  Windows 10/11 or                                              ┌── clone A
+  Windows Server       ──[ Sysprep ]──►  golden image   ─────────┼── clone B
+  installed + updated     generalize     (never booted)          └── clone C
+                                                                       |
+  Ubuntu Server or                                                     | first boot
+  Debian               ──[ cleanup ]──►  golden image   ───────────────+
+  installed + updated     machine-id,    (never booted)                |
+                          SSH keys,                                    v
+                          logs, netplan                        hostname, user,
+                                                               SSH keys, network
+                                                               set per clone —
+                                                               cloud-init or manual
+```
+
+## 2. Scope and dependencies
+
+This runbook prepares a base Windows or Ubuntu/Debian VM so it can be converted into a reusable template,
+and covers the first boot of a clone made from it — the moment each clone takes on its own identity.
+
+It is deliberately hypervisor-agnostic: it describes what must be removed from the *guest*, not how a
+given platform stores templates. §13 lists how each platform supplies cloud-init data, but creating the
+template object, the datastore layout and the clone workflow belong to that hypervisor's own
+documentation.
+
+It does **not** join a clone to a domain, install any server role, or assign an address from the lab
+addressing plan. Every runbook that follows starts from a clone produced here —
+`active-directory-domain-controller/README.md` is the first of them.
+
+## 3. Prerequisites
 
 - A virtual machine already installed with:
   - Windows 10/11 or Windows Server 2019/2022/2025
@@ -23,13 +48,9 @@ This guide is intended for administrators, lab builders, and engineers who need 
 - Optional but recommended: cloud-init support on the target platform
 - A snapshot or backup before starting the final preparation steps
 
-## Architecture
+**Commands are labelled by guest operating system.** This runbook is run inside the guest VMs themselves; there is no separate management host.
 
-You prepare one base VM per operating system, remove machine-specific identity and configuration data, then shut it down and convert it into a template. New clones created from that template can be customized at first boot with their own hostname, user account, SSH keys, and networking configuration.
-
-## Steps
-
-### 1. Prepare the Windows VM
+## 4. Prepare the Windows VM
 
 Before running Sysprep, make sure the machine is in a good state:
 
@@ -54,7 +75,7 @@ The options do the following:
 
 Do not boot the original VM again after this step. Convert or clone it as a template instead.
 
-### 2. First boot of a Windows clone
+## 5. First boot of a Windows clone
 
 When a clone boots for the first time, Windows will start OOBE and may ask for:
 
@@ -66,7 +87,7 @@ When a clone boots for the first time, Windows will start OOBE and may ask for:
 
 The exact screens depend on the Windows edition and deployment configuration.
 
-### 3. Prepare the Ubuntu VM
+## 6. Prepare the Ubuntu VM
 
 Ubuntu does not use Sysprep. The usual approach is to update the OS, clean machine-specific state, and rely on cloud-init for customization.
 
@@ -100,7 +121,7 @@ sudo apt install -y openssh-server cloud-init
 sudo systemctl enable ssh
 ```
 
-### 4. Verify and install cloud-init
+## 7. Verify and install cloud-init
 
 Check whether cloud-init is installed:
 
@@ -118,7 +139,7 @@ sudo apt install cloud-init -y
 > [!NOTE]
 > Installing cloud-init alone does not create an interactive wizard. The hypervisor or deployment platform must provide metadata and user data to configure the hostname, user, SSH keys, password configuration, and networking.
 
-### 5. Clean the Ubuntu template
+## 8. Clean the Ubuntu template
 
 Run the following commands only when the VM is ready to become a template.
 
@@ -164,7 +185,7 @@ sudo shutdown -h now
 
 After shutdown, convert the VM into a template without starting it again.
 
-### 6. First boot of an Ubuntu clone
+## 9. First boot of an Ubuntu clone
 
 When the platform provides valid cloud-init data, the first boot can:
 
@@ -178,7 +199,7 @@ When the platform provides valid cloud-init data, the first boot can:
 
 Without a supported datasource, the clone will typically keep the existing hostname and user configuration and will not behave like a Sysprep-driven Windows deployment.
 
-### Verify SSH after the first boot of an Ubuntu clone
+## 10. Verify SSH after the first boot of an Ubuntu clone
 
 During template preparation, the SSH host keys are intentionally removed:
 
@@ -278,7 +299,7 @@ sudo ss -lntp | grep ':22'
 
 A successful result shows `sshd` listening on port 22.
 
-#### Quick recovery commands
+### 10.1 Quick recovery commands
 
 If a cloned Ubuntu VM boots without working SSH, the following commands
 usually restore the service:
@@ -292,7 +313,7 @@ sudo systemctl restart ssh
 sudo systemctl status ssh
 ```
 
-#### Important
+### 10.2 Important
 
 Do not generate SSH host keys again on the original template before
 converting it to a template. Each clone must end up with its own unique SSH
@@ -311,11 +332,11 @@ and inspect its logs:
 sudo journalctl -u cloud-init -u cloud-final --no-pager
 ```
 
-### Manual hostname and IP configuration for a classic lab
+## 11. Manual hostname and IP configuration for a classic lab
 
 If the platform does not support cloud-init or if you are deploying in a simple lab environment, configure the clone manually after the first boot.
 
-#### Ubuntu: change the hostname
+### 11.1 Ubuntu — change the hostname
 
 Set a temporary hostname:
 
@@ -336,7 +357,7 @@ Replace the existing hostname with your new one, then reboot:
 sudo reboot
 ```
 
-#### Ubuntu: configure the IP address
+### 11.2 Ubuntu — configure the IP address
 
 On Ubuntu, the Netplan configuration file is often created during installation. If you configured a fixed IP during setup, the file is commonly `/etc/netplan/00-installer-config.yaml`. If you left the network in DHCP, there may be no Netplan file at all, and you can create one manually.
 
@@ -397,7 +418,7 @@ sudo netplan generate
 sudo netplan apply
 ```
 
-#### Windows: change the hostname and IP
+### 11.3 Windows — change the hostname and IP
 
 For Windows, you can change the hostname with PowerShell:
 
@@ -414,7 +435,7 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 1.1.1.1, 
 
 For DHCP, simply enable DHCP on the adapter instead of assigning a static address.
 
-### Example cloud-init configuration
+## 12. Example cloud-init configuration
 
 The following example creates an administrative user and sets the hostname. Replace the sample SSH key before use.
 
@@ -439,7 +460,7 @@ disable_root: true
 package_update: true
 ```
 
-## Platform notes
+## 13. Platform notes
 
 The method used to provide cloud-init data depends on the virtualization platform:
 
@@ -449,7 +470,7 @@ The method used to provide cloud-init data depends on the virtualization platfor
 - KVM/QEMU: attach a NoCloud seed image containing user-data and meta-data.
 - Hyper-V or VirtualBox: cloud-init requires a compatible datasource or an attached NoCloud seed image.
 
-## Common Pitfalls
+## 14. Common pitfalls
 
 - Booting the original VM again after Sysprep has been run.
 - Forgetting to clear machine-specific data on Ubuntu.
@@ -462,7 +483,7 @@ The method used to provide cloud-init data depends on the virtualization platfor
 - Generating SSH host keys inside the template itself, which would cause clones
   to share the same server identity.
 
-## References
+## 15. References
 
 - [Microsoft: Sysprep command-line options](https://learn.microsoft.com/windows-hardware/manufacture/desktop/sysprep-command-line-options)
 - [Microsoft: Sysprep process overview](https://learn.microsoft.com/windows-hardware/manufacture/desktop/sysprep-process-overview)

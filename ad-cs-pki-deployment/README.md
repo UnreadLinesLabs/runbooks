@@ -1,8 +1,8 @@
-# Deploy an AD CS PKI — Runbook
+# Deploy an AD CS PKI
 
 This runbook deploys a Microsoft Active Directory Certificate Services (AD CS) infrastructure with three PKI-role servers: an offline Standalone Root CA, an online Enterprise Issuing CA, and an independent HTTP CRL/AIA Web Distribution Point. The environment also uses `U01PARVMDOM01` for AD DS/DNS and `U01PARVMADM01` as the dedicated administration and clean PKI validation client. Full CRLs only, no Delta CRL, one standardized file convention across the three PKI-role servers, and a real leaf-certificate test before the PKI is considered complete.
 
-## Architecture Diagram
+## 1. Architecture
 
 ```text
                                  Internet
@@ -35,9 +35,9 @@ U01PARVMPKI01 --- signs ---> U01PARVMPKI02 --- issues ---> Users / Computers / S
                               U01PARVMWEB01 --- HTTP ---> pki.corp.unreadlines.com
 ```
 
-PKI01/PKI02/WEB01 sit on Subnet 2 behind `U01PARVMFWL02` (PC2); DOM01/ADM01 sit on Subnet 1 behind `U01PARVMFWL01` (PC1). All cross-subnet traffic (domain join, GPO, AD DNS lookups, SMB CRL publication) rides the inter-site link between the two OpenWrt routers documented in `infra-cloud-labs/openwrt-wireguard-site-to-site-lab`.
+PKI01/PKI02/WEB01 sit on Subnet 2 behind `U01PARVMFWL02` (PC2); DOM01/ADM01 sit on Subnet 1 behind `U01PARVMFWL01` (PC1). All cross-subnet traffic (domain join, GPO, AD DNS lookups, SMB CRL publication) rides the inter-site link between the two OpenWrt routers documented in `openwrt-wireguard-site-to-site/README.md`.
 
-## Architecture
+## 2. Servers and roles
 
 | Server | Role | IPv4 | Subnet | Gateway |
 | --- | --- | --- | --- | --- |
@@ -47,7 +47,7 @@ PKI01/PKI02/WEB01 sit on Subnet 2 behind `U01PARVMFWL02` (PC2); DOM01/ADM01 sit 
 | `U01PARVMDOM01` | AD DS / DNS | `192.168.20.41/25` | Subnet 1 (`192.168.20.0/25`) | `192.168.20.126` |
 | `U01PARVMADM01` | Administration / clean PKI validation client | `192.168.20.45/25` | Subnet 1 (`192.168.20.0/25`) | `192.168.20.126` |
 
-The three PKI-role servers (`PKI01`, `PKI02`, `WEB01`) sit on Subnet 2, `U01PARVMDOM01` and `U01PARVMADM01` on Subnet 1 — matching the two-router OpenWrt lab split (`infra-cloud-labs/openwrt-wireguard-site-to-site-lab`). Traffic between the two subnets crosses that lab's inter-site link.
+The three PKI-role servers (`PKI01`, `PKI02`, `WEB01`) sit on Subnet 2, `U01PARVMDOM01` and `U01PARVMADM01` on Subnet 1 — matching the two-router OpenWrt lab split (`openwrt-wireguard-site-to-site/README.md`). Traffic between the two subnets crosses that lab's inter-site link.
 
 ```text
 Domain:                    corp.unreadlines.com
@@ -68,7 +68,34 @@ Users / Computers / Servers / Services
 
 `U01PARVMPKI01` stays outside the domain and is normally powered off. `U01PARVMPKI02` is domain-joined and stays online. `U01PARVMWEB01` is domain-joined but is not a certification authority.
 
-## Security Rules
+## 3. Scope and dependencies
+
+This runbook builds a complete two-tier PKI: an offline Standalone Root CA (`U01PARVMPKI01`), an online
+Enterprise Issuing CA (`U01PARVMPKI02`), and an independent HTTP CRL/AIA distribution point
+(`U01PARVMWEB01`). It is finished only once a real leaf certificate has been issued and its full chain
+and revocation checking validated from a clean client.
+
+It stops deliberately there. Production certificate templates, permissions and autoenrolment are **out
+of scope** — the first of them is published in `nps-server-certificate-deployment/README.md`, which
+issues the Server Authentication certificate NPS needs. Intune, SCEP and NDES work is later still.
+
+It assumes `active-directory-domain-controller/README.md` has produced a working `corp.unreadlines.com`
+forest, and that the two-subnet topology from `openwrt-wireguard-site-to-site/README.md` is up: the PKI
+servers sit in Subnet 2 and the domain controller in Subnet 1, so every domain operation here crosses
+the inter-site link.
+
+## 4. Prerequisites
+
+- `U01PARVMDOM01` up, with `corp.unreadlines.com` resolving — `active-directory-domain-controller/README.md`.
+- Routing between Subnet 1 and Subnet 2 verified — `openwrt-wireguard-site-to-site/README.md` §22.
+- Three Windows Server VMs prepared from `prepare-windows-ubuntu-templates/README.md`, with the static
+  addresses listed in §2 reserved and free.
+- `U01PARVMADM01` available as a **clean** validation client: it must never have had the Root
+  certificate installed by hand, or the Phase 7 test proves nothing.
+- Local Administrator on each of the three PKI servers, and Domain Admin rights for the GPO work in
+  Phase 6.
+
+## 5. Security rules
 
 - Never transfer the Root CA private key.
 - Never place a PFX/P12 file, a CA backup, or an AD CS database on `U01PARVMWEB01`.
@@ -81,7 +108,7 @@ Users / Computers / Servers / Services
 
 These rules are not repeated elsewhere in this document — apply them throughout.
 
-## Root CA Power and Access Discipline
+## 6. Root CA power and access discipline
 
 The standard `mRemoteNG` connection model used for `U01PARVMPKI02` and `U01PARVMWEB01` should not be read as "the Root CA stays reachable over the network." For `U01PARVMPKI01`:
 
@@ -107,7 +134,7 @@ power off U01PARVMPKI01
 
 `U01PARVMPKI02` and `U01PARVMWEB01` continue to be administered normally through `mRemoteNG`. This is not repeated at the end of every phase that touches `U01PARVMPKI01` — apply it after Phase 1, Phase 3, and the signing step of Phase 4.
 
-## File and Publication Conventions
+## 7. File and publication conventions
 
 ```text
 1. AD CS native output              C:\Windows\System32\CertSrv\CertEnroll\
@@ -161,7 +188,7 @@ Copy the contents of `C:\PKI-Backup` to protected, offline storage immediately a
 
 **Certificate extension convention.** `.crt` is the standard extension for CA certificates at the staging and publication levels. A Windows export command may initially produce a `.cer` file — `.cer` and `.crt` can both hold the same X.509 DER content, so this runbook writes certificate exports directly under their `.crt` staging name rather than exporting once and renaming afterward.
 
-## Initial Manual Preparation — Standard Procedure
+## 8. Initial manual preparation — standard procedure
 
 Applies the first time you touch `U01PARVMPKI01`, `U01PARVMPKI02`, `U01PARVMWEB01`, or `U01PARVMADM01`:
 
@@ -216,7 +243,7 @@ $Configuration = Get-NetIPConfiguration `
 
 Compare against the phase's Target Configuration. Do not continue until every value matches.
 
-## Overview
+## 9. Phase overview
 
 | Phase | Server | Content |
 | --- | --- | --- |
@@ -260,11 +287,11 @@ Checkpoint 2 — PKI ready
 
 ---
 
-## Phase 1 — Root CA
+## 10. Phase 1 — Root CA
 
 **Server:** `U01PARVMPKI01`
 
-### Target Configuration
+### 10.1 Target configuration
 
 ```text
 ComputerName : U01PARVMPKI01
@@ -284,15 +311,15 @@ DnsServers   : none — not domain-joined, do not assign the AD DNS server
 | Certificate validity | 20 years |
 | Full CRL period | 26 weeks |
 
-### Initial Manual Preparation
+### 10.2 Initial manual preparation
 
 Follow the standard procedure above using the Target Configuration values here. `U01PARVMPKI01` stays outside the domain.
 
-### Verify Hostname and Network Configuration
+### 10.3 Verify hostname and network configuration
 
 Run the Standard Network Verification script and confirm it matches the Target Configuration above.
 
-### Create `CAPolicy.inf`
+### 10.4 Create `CAPolicy.inf`
 
 Run this in an elevated PowerShell session on `U01PARVMPKI01`, before installing the AD CS role. The command below writes `C:\Windows\CAPolicy.inf` directly — no manual Notepad step is needed. AD CS reads this file only if it already exists in `%SystemRoot%` at the moment the CA role is installed, so it must be created first:
 
@@ -331,7 +358,7 @@ Issuing CA certificate    CDP: Root CA CRL        AIA: Root CA certificate
 Leaf certificate          CDP: Issuing CA CRL     AIA: Issuing CA certificate
 ```
 
-### Install AD CS Role and the Standalone Root CA
+### 10.5 Install AD CS role and the standalone Root CA
 
 ```powershell
 Install-WindowsFeature `
@@ -360,7 +387,7 @@ Install-AdcsCertificationAuthority `
     -Force
 ```
 
-### Enable AD CS Auditing
+### 10.6 Enable AD CS auditing
 
 `U01PARVMPKI01` isn't domain-joined, so the Advanced Audit Policy is set locally rather than through a GPO — `AuditFilter` alone isn't enough without it:
 
@@ -382,7 +409,7 @@ certutil -getreg CA\AuditFilter
 
 Expect `Certification Services    Success and Failure` and `AuditFilter    127`.
 
-### Stage and Back Up
+### 10.7 Stage and back up
 
 ```powershell
 New-Item -Path "C:\UnreadLines" -ItemType Directory -Force
@@ -441,7 +468,7 @@ Copy `C:\PKI-Backup` to protected offline storage now. Repeat this same backup a
 
 Store the backup password separately from the backup itself — anyone who obtains both can restore the Root CA's private key. Once the offline copy is verified, remove the local `C:\PKI-Backup` staging copy from `U01PARVMPKI01` as operational policy allows; the VM stays powered off most of the time, but the backup shouldn't sit indefinitely on its system disk either.
 
-### Verification
+### 10.8 Verification
 
 ```powershell
 Get-Service CertSvc
@@ -467,11 +494,11 @@ power off U01PARVMPKI01
 
 ---
 
-## Phase 2 — Web Distribution Point
+## 11. Phase 2 — Web distribution point
 
 **Server:** `U01PARVMWEB01`, with a short step on `U01PARVMDOM01`.
 
-### Target Configuration
+### 11.1 Target configuration
 
 ```text
 ComputerName : U01PARVMWEB01
@@ -481,11 +508,11 @@ Gateway      : 192.168.20.254
 DnsServers   : 192.168.20.41
 ```
 
-### Initial Manual Preparation
+### 11.2 Initial manual preparation
 
 Follow the standard procedure above using the Target Configuration values here.
 
-### Verify Hostname and Network Configuration
+### 11.3 Verify hostname and network configuration
 
 Run the Standard Network Verification script and confirm it matches the Target Configuration above. Confirm domain resolution before joining:
 
@@ -493,7 +520,7 @@ Run the Standard Network Verification script and confirm it matches the Target C
 Resolve-DnsName -Name "corp.unreadlines.com" -Server "192.168.20.41"
 ```
 
-### Domain Join
+### 11.4 Domain join
 
 ```powershell
 $Credential = Get-Credential
@@ -529,7 +556,7 @@ Test-ComputerSecureChannel = True
 
 Do not continue to IIS installation until these checks are correct.
 
-### Install IIS and Create the Dedicated Site
+### 11.5 Install IIS and create the dedicated site
 
 ```powershell
 Install-WindowsFeature -Name Web-Server -IncludeManagementTools
@@ -549,7 +576,7 @@ Stop-Website -Name "Default Web Site"
 
 A dedicated site means `http://pki.corp.unreadlines.com/UnreadLinesRootCA.crl` maps directly to `C:\inetpub\wwwroot\pki\UnreadLinesRootCA.crl` — no `/pki/` segment, no ambiguity with `Default Web Site`, which is stopped since it isn't used on this server.
 
-### Configure MIME Types
+### 11.6 Configure MIME types
 
 If both mappings already exist with the correct MIME types, do not add them again — attempting to add an existing `fileExtension` causes IIS to return `Cannot add duplicate collection entry`. The block below checks each extension before adding it, so it's safe to run as-is regardless of what's already mapped:
 
@@ -599,7 +626,7 @@ Expected output:
 
 The final HTTP verification for each file still expects `.crl → 200 / application/pkix-crl` and `.crt → 200 / application/x-x509-ca-cert`.
 
-### Create the DNS Record — on `U01PARVMDOM01`
+### 11.7 Create the DNS record — on `U01PARVMDOM01`
 
 ```powershell
 Add-DnsServerResourceRecordA `
@@ -615,7 +642,7 @@ Verify resolution before testing anything over HTTP — a `health.txt` request a
 Resolve-DnsName -Name "pki.corp.unreadlines.com" -Server "192.168.20.41"
 ```
 
-### Test and Remove `health.txt`
+### 11.8 Test and remove `health.txt`
 
 Run this section on `U01PARVMWEB01` — the physical file is created and removed there, even if the `Invoke-WebRequest` call itself is optionally repeated from `U01PARVMDOM01` or another domain member:
 
@@ -635,7 +662,7 @@ Remove-Item -Path "C:\inetpub\wwwroot\pki\health.txt"
 
 ---
 
-## Phase 3 — Root CA CDP/AIA and Publication
+## 12. Phase 3 — Root CA CDP/AIA and publication
 
 **Server:** `U01PARVMPKI01`, then transfer to `U01PARVMWEB01`. Requires Phase 2 complete — configure CDP/AIA before signing the Issuing CA's request, since certificates already issued keep the URLs that were active at signing time.
 
@@ -652,7 +679,7 @@ Get-Date
 w32tm /query /status
 ```
 
-### Configure CDP and AIA
+### 12.1 Configure CDP and AIA
 
 ```powershell
 certsrv.msc
@@ -700,14 +727,14 @@ Restart-Service CertSvc
 
 > **Why `<CRLNameSuffix>` and `<CertificateName>` stay in the URL.** At first deployment both macros expand to nothing, so the published files are simply `UnreadLinesRootCA.crl` and `UnreadLinesRootCA.crt`. They earn their place at the next CA certificate renewal: `<CertificateName>` lets AD CS distinguish generations of the CA's own certificate, and `<CRLNameSuffix>` distinguishes the CRLs tied to each generation's key. Keeping the macros now means a future renewal doesn't require re-touching this configuration or overwriting a generation still referenced by certificates already issued.
 
-### Verify the Configuration
+### 12.2 Verify the configuration
 
 ```powershell
 certutil -getreg CA\CRLPublicationURLs
 certutil -getreg CA\CACertPublicationURLs
 ```
 
-### Generate and Stage the CRL
+### 12.3 Generate and stage the CRL
 
 ```powershell
 certutil -crl
@@ -724,7 +751,7 @@ Copy-Item `
 
 Adjust the source filename above to match what `Get-ChildItem` actually returned.
 
-### Transfer to `U01PARVMWEB01` and `U01PARVMDOM01`
+### 12.4 Transfer to `U01PARVMWEB01` and `U01PARVMDOM01`
 
 On `U01PARVMPKI01`, confirm both files exist before transferring anything:
 
@@ -784,7 +811,7 @@ Get-Item "C:\UnreadLines\UnreadLinesRootCA.crt"
 
 Do not copy the Root CRL to `U01PARVMDOM01` — it has no use there. Do not power off `U01PARVMPKI01` until both transfers above have been completed and verified.
 
-### Verification
+### 12.5 Verification
 
 Run these from `U01PARVMWEB01` or from a domain member using Active Directory DNS — not from `U01PARVMPKI01`. Do not configure permanent AD DNS on `U01PARVMPKI01` just to run this test; it stays without a permanent AD DNS server per its Target Configuration.
 
@@ -820,7 +847,7 @@ Only then disconnect / disable `U01PARVMPKI01`'s network connectivity and power 
 
 ---
 
-## Checkpoint 1 — Root CA Publication
+## 13. Checkpoint 1 — Root CA publication
 
 Do not create the Issuing CA before this checkpoint is fully green:
 
@@ -836,11 +863,11 @@ Do not create the Issuing CA before this checkpoint is fully green:
 
 ---
 
-## Phase 4 — Issuing CA
+## 14. Phase 4 — Issuing CA
 
 **Server:** `U01PARVMPKI02`, with a signing step on `U01PARVMPKI01`.
 
-### Target Configuration
+### 14.1 Target configuration
 
 ```text
 ComputerName : U01PARVMPKI02
@@ -860,11 +887,11 @@ DnsServers   : 192.168.20.41
 | Certificate validity | 10 years — set by the Root CA at signing time |
 | Full CRL period | 1 day |
 
-### Initial Manual Preparation
+### 14.2 Initial manual preparation
 
 Follow the standard procedure above using the Target Configuration values here.
 
-### Verify Hostname and Network Configuration
+### 14.3 Verify hostname and network configuration
 
 Run the Standard Network Verification script and confirm it matches the Target Configuration above. Confirm domain resolution before joining:
 
@@ -872,7 +899,7 @@ Run the Standard Network Verification script and confirm it matches the Target C
 Resolve-DnsName -Name "corp.unreadlines.com" -Server "192.168.20.41"
 ```
 
-### Domain Join
+### 14.4 Domain join
 
 ```powershell
 $Credential = Get-Credential
@@ -908,7 +935,7 @@ Test-ComputerSecureChannel = True
 
 Do not continue to `CAPolicy.inf` / AD CS installation before this is verified.
 
-### Create `CAPolicy.inf`
+### 14.5 Create `CAPolicy.inf`
 
 Run this in an elevated PowerShell session on `U01PARVMPKI02`, before installing the AD CS role. The command below writes `C:\Windows\CAPolicy.inf` directly — no manual Notepad step is needed. AD CS reads this file only if it already exists in `%SystemRoot%` at the moment the CA role is installed, so it must be created first:
 
@@ -932,7 +959,7 @@ Get-Content "C:\Windows\CAPolicy.inf"
 
 `LoadDefaultTemplates=0` stops the Enterprise Issuing CA from automatically publishing the built-in default templates the moment it comes online — production templates are configured only after Checkpoint 2.
 
-### Install the AD CS Role
+### 14.6 Install the AD CS role
 
 ```powershell
 Install-WindowsFeature `
@@ -947,7 +974,7 @@ A server restart is not normally required here. Check the output — `RestartNee
 
 Do not force a restart when `Restart Needed = No`.
 
-### Generate the Issuing CA Certificate Request
+### 14.7 Generate the Issuing CA certificate request
 
 ```powershell
 New-Item -Path "C:\UnreadLines" -ItemType Directory -Force
@@ -964,7 +991,7 @@ Install-AdcsCertificationAuthority `
 
 This reports the installation as incomplete — expected, since the request still needs to be signed by the Root CA. The private key stays on `U01PARVMPKI02`; only the request file leaves this server.
 
-### Sign the Request — on `U01PARVMPKI01`
+### 14.8 Sign the request — on `U01PARVMPKI01`
 
 Start the controlled Root CA operation:
 
@@ -1138,7 +1165,7 @@ The Phase 4 Root CA operation is complete once:
 
 Only then disconnect / disable `U01PARVMPKI01`'s network connectivity and power it off.
 
-### Install on `U01PARVMPKI02`
+### 14.9 Install on `U01PARVMPKI02`
 
 ```powershell
 Import-Certificate `
@@ -1160,7 +1187,7 @@ Get-Service CertSvc
 
 Expect `Status = Running`.
 
-### Verification
+### 14.10 Verification
 
 ```powershell
 Get-Service CertSvc
@@ -1176,11 +1203,11 @@ The trust chain is now `UnreadLines Root CA` → `UnreadLines Issuing CA`.
 
 ---
 
-## Phase 5 — Issuing CA CDP/AIA and Publication
+## 15. Phase 5 — Issuing CA CDP/AIA and publication
 
 **Server:** `U01PARVMPKI02`, then transfer to `U01PARVMWEB01`.
 
-### Create the Publication Share — on `U01PARVMWEB01`
+### 15.1 Create the publication share — on `U01PARVMWEB01`
 
 The Issuing CA's Full CRL publishes itself, natively, straight from AD CS into a dedicated share — no script, no scheduled task. Create that share before touching CDP. `CertSvc` runs as `LocalSystem` and accesses the remote SMB share using the `U01PARVMPKI02$` **computer account** — that's the identity presented on the network when it writes to a UNC CDP location.
 
@@ -1246,7 +1273,7 @@ Result:
 
 Never add `U01PARVMPKI02$` to `Administrators`, `Domain Admins`, or any other privileged group on `U01PARVMWEB01`. If possible, restrict inbound TCP 445 on `U01PARVMWEB01` to `192.168.20.143` for this specific purpose. The real test of this configuration remains `certutil -crl` on `U01PARVMPKI02`, in "Verify the Configuration and Publish" below.
 
-### Configure CDP and AIA
+### 15.2 Configure CDP and AIA
 
 Switch back to `U01PARVMPKI02`. Run the following on `U01PARVMPKI02`:
 
@@ -1300,7 +1327,7 @@ Do not create a UNC AIA entry — the UNC share is used only for CRL publication
 
 Click **Apply**, then **OK**.
 
-### Set the Full CRL Period
+### 15.3 Set the full CRL period
 
 The Issuing CA revokes daily, so its Full CRL needs a short period — with a short overlap window so a client refreshing near expiry still gets a valid CRL:
 
@@ -1318,7 +1345,7 @@ certutil -getreg CA\CRLDeltaPeriodUnits
 
 Expect `CRLDeltaPeriodUnits = 0` — Delta CRL publication stays off, same as the Root CA. In `certsrv.msc`'s CDP dialog, don't check any `Publish Delta CRLs to this location` box on any of the three entries in the next step.
 
-### Verify the Configuration and Publish
+### 15.4 Verify the configuration and publish
 
 ```powershell
 certutil -getreg CA\CRLPublicationURLs
@@ -1358,7 +1385,7 @@ $Response.Headers["Content-Type"]
 
 Expect `200` / `application/pkix-crl`.
 
-### Transfer the Certificate to `U01PARVMWEB01`
+### 15.5 Transfer the certificate to `U01PARVMWEB01`
 
 The CRL now publishes itself; the Issuing CA certificate still needs a one-time manual copy for its HTTP AIA location — it isn't part of the UNC CDP mechanism above. Transfer:
 
@@ -1386,7 +1413,7 @@ $Response.Headers["Content-Type"]
 
 Expect `200` / `application/x-x509-ca-cert`.
 
-### Configure AD CS Auditing — on `U01PARVMPKI02`
+### 15.6 Configure AD CS auditing — on `U01PARVMPKI02`
 
 ```powershell
 certutil -setreg CA\AuditFilter 127
@@ -1394,7 +1421,7 @@ certutil -setreg CA\AuditFilter 127
 Restart-Service CertSvc
 ```
 
-### Create the Audit GPO — on `U01PARVMDOM01`
+### 15.7 Create the audit GPO — on `U01PARVMDOM01`
 
 Switch servers for this part — the `GroupPolicy` module isn't necessarily installed on `U01PARVMPKI02`. Use a GPO dedicated to this — do not fold it into `PKI - Trusted Root CA`.
 
@@ -1475,7 +1502,7 @@ AuditFilter              = 127
 
 The GPO must apply only to `U01PARVMPKI02` — no other computer should show it as applied.
 
-### Back Up the Issuing CA
+### 15.8 Back up the Issuing CA
 
 Now that auditing and the audit GPO are in place, the Issuing CA is in its truly final configuration — back it up now, not earlier, so the registry export actually reflects `AuditFilter 127` and everything else configured above rather than a stale pre-audit state:
 
@@ -1518,11 +1545,11 @@ Do not wait here for the CRL to republish naturally — continue directly to Pha
 
 ---
 
-## Phase 6 — Deploy Root Trust via GPO
+## 16. Phase 6 — Deploy root trust via GPO
 
 **Server:** `U01PARVMDOM01`, tested on a domain member. The Root CA is standalone — it isn't automatically trusted by domain computers, and a manual per-machine import doesn't scale.
 
-### Verify the Root Certificate
+### 16.1 Verify the root certificate
 
 `UnreadLinesRootCA.crt` was already staged on `U01PARVMDOM01:C:\UnreadLines\` during Phase 3, while `U01PARVMPKI01` was still powered on — there's no need to power the Root CA back on solely to fetch a public certificate that's already been exported. If the file is missing here for some reason, retrieve the already-published public copy from `U01PARVMWEB01:C:\inetpub\wwwroot\pki\UnreadLinesRootCA.crt` instead. Do not power on `U01PARVMPKI01` just to obtain this certificate.
 
@@ -1536,7 +1563,7 @@ Get-PfxCertificate `
 
 Compare the thumbprint against the reference thumbprint recorded in Phase 1. Do not proceed if it doesn't match.
 
-### Create and Link the GPO
+### 16.2 Create and link the GPO
 
 On `U01PARVMDOM01`:
 
@@ -1549,7 +1576,7 @@ gpmc.msc
 
 Link it at the domain root; do not modify `Default Domain Policy`. Unlike the audit GPO in Phase 5, keep the default **Security Filtering: Authenticated Users** here — every domain computer needs this policy to apply.
 
-### Import the Root Certificate
+### 16.3 Import the root certificate
 
 Edit `PKI - Trusted Root CA` and navigate to:
 
@@ -1568,7 +1595,7 @@ Do not import `UnreadLinesIssuingCA.crt` here — only the Root CA certificate b
 
 One domain-linked GPO is enough — Active Directory and SYSVOL replicate it to every Domain Controller, member server, and domain PC. There is no need to import the certificate manually on each Domain Controller. (`certutil -dspublish` is an alternative low-level method, but this GPO is the primary approach in this runbook.)
 
-### Prepare `U01PARVMADM01` and Verify Root Trust
+### 16.4 Prepare `U01PARVMADM01` and verify root trust
 
 `U01PARVMADM01` serves double duty here: it's the member machine that proves the GPO works, and — once verified — it stays prepared as the dedicated, genuinely clean client used for Phase 7's leaf validation.
 
@@ -1616,7 +1643,7 @@ Get-ChildItem -Path "Cert:\LocalMachine\Root" |
 
 Compare the thumbprint against the reference thumbprint recorded in Phase 1. `U01PARVMADM01` is now the designated validation client for Phase 7 and Checkpoint 2.
 
-### Verify on a Domain Controller
+### 16.5 Verify on a domain controller
 
 Repeat the same check once on a Domain Controller — GPO scope and inheritance should reach Domain Controllers the same as any other domain member, and it is worth confirming rather than assuming:
 
@@ -1636,7 +1663,7 @@ Get-ChildItem -Path "Cert:\LocalMachine\Root" |
 
 ---
 
-## Phase 7 — Leaf Certificate Validation
+## 17. Phase 7 — Leaf certificate validation
 
 **Server:** `U01PARVMPKI02` to issue the certificate; validated from `U01PARVMADM01`, prepared and verified as the dedicated, genuinely clean validation client at the end of Phase 6. A clean validation client means, all conditions required:
 
@@ -1659,13 +1686,13 @@ UnreadLines Root CA
 
 To actually confirm CDP/AIA on the **Issuing CA's issued certificates** work, issue one real leaf certificate and validate its full chain.
 
-### The Designated Test User
+### 17.1 The designated test user
 
 The leaf enrollment and the AIA/CDP validation below must be performed as a non-privileged domain user, never as Domain Admin — using Domain Admin for this is exactly what caused the intermediate-store confusion during this runbook's lab pass.
 
 On `U01PARVMDOM01`, use an existing non-privileged domain user or create a dedicated temporary validation user. This runbook refers to it as the **designated test user** — for example, `No One` (UPN `u026080910@unreadlines.com`, sAMAccountName `u026080910`). The account only needs normal domain logon rights plus the `Read` + `Enroll` permissions granted on `PKI Validation` below; nothing more.
 
-### Create a Temporary Validation Template
+### 17.2 Create a temporary validation template
 
 On `U01PARVMPKI02`: `certtmpl.msc` → `User` → right-click → **Duplicate Template**. On the **General** tab:
 
@@ -1711,7 +1738,7 @@ That's restrictive enough for a temporary template — only the designated test 
 
 Publish it: `certsrv.msc` → **Certificate Templates** → **New** → **Certificate Template to Issue** → select `PKI Validation`.
 
-### Issue One Validation Certificate
+### 17.3 Issue one validation certificate
 
 Log on to `U01PARVMADM01` as the designated test user and open `certmgr.msc` → **Personal** → **All Tasks** → **Request New Certificate** → select `PKI Validation` → **Enroll**.
 
@@ -1744,7 +1771,7 @@ Get-Item "C:\UnreadLines\PKIValidation.crt"
 
 Do not run `certutil -URL` / `-verify` before this file actually exists.
 
-### Validate the Full Chain
+### 17.4 Validate the full chain
 
 On `U01PARVMADM01`, first confirm the Issuing CA's certificate genuinely isn't already present locally — this is what makes the AIA fetch below meaningful rather than a no-op. `Cert:\CurrentUser\CA` belongs to whichever account is currently logged on: checking it while logged on as a Domain Admin does **not** validate the designated test user's `CurrentUser\CA` store, so run that half of the check from the test user's own session.
 
@@ -1863,7 +1890,7 @@ Leaf certificate revocation check passed
 CertUtil: -verify command completed successfully.
 ```
 
-### Remove the Temporary Template
+### 17.5 Remove the temporary template
 
 On `U01PARVMPKI02`. Two separate operations — both are required, not just the first:
 
@@ -1876,7 +1903,7 @@ After both, no `PKI Validation` template remains published or present in AD. No 
 
 ---
 
-## Checkpoint 2 — PKI Complete
+## 18. Checkpoint 2 — PKI complete
 
 The reference leaf validation for this checklist was performed from `U01PARVMADM01` (Phase 7). The deployment is complete only when all of the following hold:
 
@@ -1904,7 +1931,7 @@ Only after this checkpoint can production certificate templates, permissions, au
 
 ---
 
-## Post-deployment Operational Check — After the First Automatic CRL Cycle
+## 19. Post-deployment operational check — after the first automatic CRL cycle
 
 This check is distinct from Checkpoint 2, which can be reached the same day: it confirms native, unattended CRL republication on `U01PARVMPKI02` actually happens on its own, and it requires waiting roughly 24 hours for the first natural `CRLPeriod` to elapse. Checkpoint 2 does not depend on it — perform it once, afterward, as a final confirmation.
 
@@ -1916,3 +1943,21 @@ Get-Item "C:\inetpub\wwwroot\pki\UnreadLinesIssuingCA.crl" |
 ```
 
 Compare against the initial publication baseline recorded in Phase 5, right after the first `certutil -crl`. The check is demonstrable as: `New LastWriteTime > Initial LastWriteTime`, with no manual `certutil -crl` run in between. That's the real confirmation the native UNC publication works unattended, not just on a manually forced run.
+
+## 20. Update the infrastructure inventory
+
+Per `reference/server-naming-convention.md` §2, record `U01PARVMPKI01`, `U01PARVMPKI02` and
+`U01PARVMWEB01` in `reference/vm-inventory.md` — name, role, site, address and owner. All three are
+already listed there; confirm each row matches what was actually deployed, in particular that `PKI01`
+is recorded as normally powered off.
+
+## 21. References
+
+- [Active Directory Certificate Services overview — Microsoft Learn](https://learn.microsoft.com/windows-server/identity/ad-cs/active-directory-certificate-services-overview)
+- [Prepare the `CAPolicy.inf` file — Microsoft Learn](https://learn.microsoft.com/windows-server/networking/core-network-guide/cncg/server-certs/prepare-the-capolicy-inf-file)
+- [`certutil` — Microsoft Learn](https://learn.microsoft.com/windows-server/administration/windows-commands/certutil)
+- [RFC 5280 — Internet X.509 Public Key Infrastructure Certificate and CRL Profile](https://www.rfc-editor.org/rfc/rfc5280)
+
+---
+
+*Part of [UnreadLines Labs](https://youtube.com/@unreadlineslabs) — real-world enterprise infrastructure, identity, and security labs, documented the way nobody else bothers to.*
