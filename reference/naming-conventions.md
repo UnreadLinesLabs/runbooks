@@ -58,6 +58,7 @@ U01PARVMDOM01
 | `FSV` | File Server |
 | `FWL` | Router / Firewall (OpenWrt) |
 | `RAP` | Radio Access Point (Wi-Fi, hostapd) |
+| `ECN` | Microsoft Entra Connect Sync server |
 
 ### Examples
 
@@ -69,6 +70,7 @@ U01PARVMNPS01
 U01PARVMWEB01
 U01PARVMFWL01
 U01PARVMRAP01
+U01PARVMECN01
 ```
 
 ### Naming rules

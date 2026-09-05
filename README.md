@@ -25,6 +25,7 @@ other runbook places its servers in.
 ### Identity and PKI
 
 - [Deploy the first Active Directory domain controller](active-directory-domain-controller/README.md) — create the `corp.unreadlines.com` forest, its first domain controller, and the DNS service that comes with it.
+- [Deploy Microsoft Entra Connect and synchronize Active Directory with Microsoft Entra ID](microsoft-entra-connect-sync/README.md) — build `U01PARVMECN01`, verify the hybrid identity design already in place, and turn on Password Hash Sync between `corp.unreadlines.com` and the `unreadlines` Entra tenant.
 - [Deploy an AD CS PKI](ad-cs-pki-deployment/README.md) — stand up an offline Standalone Root CA, an online Enterprise Issuing CA, and an independent HTTP CRL/AIA distribution point, validated end to end with a real leaf certificate.
 
 ### Network access control

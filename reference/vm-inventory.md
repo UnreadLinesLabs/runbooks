@@ -26,6 +26,7 @@
 | `U01PARVMPKI02` | Online Enterprise Issuing CA | Subnet 2 (`192.168.20.128/25`) | `192.168.20.143/25` | `192.168.20.254` | Windows Server | Yes | Running | Issues user/computer/server certificates |
 | `U01PARVMWEB01` | HTTP CRL/AIA Web Distribution Point | Subnet 2 (`192.168.20.128/25`) | `192.168.20.144/25` | `192.168.20.254` | Windows Server | Yes | Running | Publishes `pki.corp.unreadlines.com` |
 | `U01PARVMRAP01` | Wireless Access Point (`hostapd`, USB Wi-Fi passthrough) | Subnet 2 (`192.168.20.128/25`); second NIC on `VMnet3` | `192.168.20.145/25` (management, `ens33`); no IP on `ens37`/`VMnet3` | `192.168.20.254` | Ubuntu/Debian | No | Running | SSID#1 (`UnreadLines-Guest`, WPA2-PSK + DHCP) validated end-to-end: association, DHCP lease, Internet. Bridges the Wi-Fi radio to `VMnet3` (`br-vlan10`, member `ens37`) — a dedicated VMware network, not a VLAN trunk. `UnreadLines-Mobile` (802.1X EAP-TLS) pending the NPS server certificate — see the hostapd Wi-Fi AP lab §15 and the `radius-nps-deployment` lab |
+| `U01PARVMECN01` | Microsoft Entra Connect Sync | Subnet 2 (`192.168.20.128/25`) | `192.168.20.146/25` | `192.168.20.254` | Windows Server | Yes | Planned | Hybrid identity sync for `corp.unreadlines.com` ↔ Entra tenant `unreadlines`, Password Hash Sync, OU-filtered to standard accounts (`u...`) only — see the `microsoft-entra-connect-sync` lab |
 
 ## 3. Wi-Fi client networks (behind `RAP01` / `FWL02` — not VMs)
 
@@ -46,7 +47,7 @@ Full deployment detail: see the hostapd Wi-Fi AP lab and the `radius-nps-deploym
 | Subnet | Range | Next free |
 | --- | --- | --- |
 | Subnet 1 (`192.168.20.0/25`) | `.1`–`.126` | `.47` |
-| Subnet 2 (`192.168.20.128/25`) | `.129`–`.254` | `.146` |
+| Subnet 2 (`192.168.20.128/25`) | `.129`–`.254` | `.147` |
 | SSID#1 / `VMnet3` (`192.168.21.0/25`) | `.1`–`.126` | static range `.1`–`.9` (`.1` = `FWL02` `eth2`, `.2` = `RAP01` `br-vlan10`, optional/diagnostic); DHCP pool `.50`–`.99` (see hostapd lab) |
 | `UnreadLines-Mobile` / `VMnet4` (`192.168.21.128/25`, reserved) | `.129`–`.254` | static range `.129`–`.137`; DHCP pool `.178`–`.228` (reserved, not yet built) |
 | `UnreadLines-Corp` / `VMnet5` (`192.168.22.0/25`, reserved) | `.1`–`.126` | not yet allocated |
