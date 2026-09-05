@@ -812,6 +812,12 @@ Retrieve the file before making any deep changes to the lab.
 - Only bridge the OpenWrt VM to Wi-Fi, never the lab VMs themselves.
 - Never set a gateway on Windows' VMnet2 interface: the host keeps its
   default route via its own Wi-Fi.
+- Give every LAB VM the full /25 mask (`255.255.255.128`), never /24: a
+  /24 makes Windows treat the *other* PC's /25 as on-link and try ARP
+  instead of routing through the local OpenWrt. The ARP silently times
+  out — it looks like a routing or firewall problem, but ping to the
+  local gateway still works, because that host really is on the same
+  segment.
 - Don't expose LuCI/SSH from the WAN zone unless truly needed.
 - Don't run several DHCP servers (VMware, OpenWrt, Windows) on the same
   segment unless you explicitly mean to.
@@ -821,6 +827,17 @@ Retrieve the file before making any deep changes to the lab.
 - Don't try to solve the inter-LAB problem with simple static routes via
   wan: it will never work over a Wi-Fi bridge (section 19) — the tunnel
   is the solution, not a temporary workaround.
+- If DNS resolution across the tunnel intermittently times out (e.g.
+  Resolve-DnsName against the AD DNS server succeeding roughly every
+  other try) even though `wg show` shows a clean, current handshake,
+  suspect real packet loss on the underlying shared home Wi-Fi rather
+  than WireGuard, the routers, or the DNS server itself: check the
+  Wi-Fi channel for congestion (a crowded DFS channel is a common
+  culprit) and measure actual loss with `iperf3 -u` between the two
+  routers — `wg0` interface counters stay clean (0 errors/drops) even
+  while real loss is happening one layer below. See
+  `../openwrt-wired-site-to-site/README.md` for a wired alternative
+  path that removes the Wi-Fi link from the equation entirely.
 ```
 
 ---
