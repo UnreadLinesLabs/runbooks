@@ -66,10 +66,12 @@ with the expected `@id.unreadlines.com` sign-in name.
 
 It does **not** design the UPN/domain strategy — that decision is already made and documented in
 `reference/active-directory-entra-identity-design.md`, which this runbook only verifies (§6). It does
-not configure Conditional Access, break-glass account exclusions, password writeback, or Seamless SSO —
-all tracked as open points in that design document (§8) and picked up in "Next step" (§12) rather than
-here. It does not extend synchronization beyond the pilot OU, and it does not restructure the OU tree:
-it assumes the tree in `reference/naming-conventions.md` §3 already exists as documented.
+not configure Conditional Access, break-glass account exclusions, or Seamless SSO — all tracked as open
+points in that design document (§8) and picked up in "Next step" (§12) rather than here. Password
+writeback is enabled (§8, step 9), but Self-Service Password Reset — the tenant-side setting that
+actually lets a synced user reset their password from the cloud — is not turned on yet; that follow-up
+is tracked in §12. It does not extend synchronization beyond the pilot OU, and it does not restructure
+the OU tree: it assumes the tree in `reference/naming-conventions.md` §3 already exists as documented.
 
 **A filtering limit to know before relying on it**: `reference/naming-conventions.md` §3 places every
 human account — standard users (`u...`) and AD admins (`a...`) alike — in the same site `Users` OU;
@@ -101,6 +103,7 @@ there.
 | UPN source attribute | `userPrincipalName` (already `<sAMAccountName>@id.unreadlines.com` on pilot accounts) |
 | Authentication method | Password Hash Synchronization |
 | Synchronization scope | Domain/OU filtering — one site `Users` OU, standard accounts (`u...`) only |
+| AD DS connector account | Auto-created by the wizard (**Create new AD account**, §8) — `MSOL_<random>`, forest root `Users` container. Deliberate exception to the `svc-*` convention (`reference/naming-conventions.md` §5.4): it's a Microsoft-generated system account, not one this lab names itself. |
 
 ## 4. Prerequisites
 
@@ -255,6 +258,16 @@ part of this runbook's own expected final state (§10), not something to trouble
 
 **On `U01PARVMECN01`:**
 
+**Turn off Internet Explorer Enhanced Security Configuration (IE ESC) before starting the wizard below
+— not after hitting the problem it causes.** On Windows Server, the wizard's later sign-in step (§8.3)
+renders through Internet Explorer's engine, and IE ESC is on by default: it blocks
+`https://aadcdn.msauth.net` and the sign-in page never renders. *Server Manager* → *Local Server* → **IE
+Enhanced Security Configuration** → set it to **Off** for Administrators now, before step 1 below. Turn
+it back **On** once §8 finishes — it's a server-wide security control, not something this lab needs left
+off. The alternative is the sign-in dialog's own **Add…** button (adding `aadcdn.msauth.net` to Trusted
+sites) once you hit it in §8.3, but expect to repeat that for `login.microsoftonline.com` and
+`login.windows.net` right after — turning IE ESC off now avoids doing this domain by domain mid-wizard.
+
 1. Download the latest Microsoft Entra Connect Sync installer from the **Microsoft Entra admin
    center** — not the Microsoft Download Center, which Microsoft stopped using for new Entra Connect
    Sync releases (see §13). In [Microsoft Entra admin center](https://entra.microsoft.com), left-hand
@@ -284,33 +297,65 @@ Still inside the same custom-installation wizard, on `U01PARVMECN01`:
 2. **User sign-in** — select **Password Hash Synchronization**, leave **Enable single sign-on**
    unchecked (out of scope, see §12), click **Next**.
 3. **Connect to Microsoft Entra ID** — sign in with the Hybrid Identity Administrator (or Global
-   Administrator) cloud account from §4.
-
-   **On Windows Server, this sign-in window is Internet Explorer's engine, and Internet Explorer
-   Enhanced Security Configuration (IE ESC) is on by default — it blocks `https://aadcdn.msauth.net`
-   and the sign-in page never renders.** Fastest fix: *Server Manager* → *Local Server* → **IE Enhanced
-   Security Configuration** → set it to **Off** for Administrators, close and reopen the sign-in step.
-   Turn it back **On** once §8 finishes — it's a server-wide security control, not something this lab
-   needs left off. The dialog's own **Add…** button (adding `aadcdn.msauth.net` to Trusted sites) works
-   too, but expect to repeat it for `login.microsoftonline.com` and `login.windows.net` when the wizard
-   hits them next — disabling IE ESC avoids doing this domain by domain.
-4. **Connect your directories** — click **Add Directory**, then **AD forest account**, and provide the
-   Enterprise Admin (or delegated) credentials from §4 for `corp.unreadlines.com`.
+   Administrator) cloud account from §4. If IE ESC wasn't turned off before §7, this is where the sign-in
+   page fails to render — see the note at the top of §7.
+4. **Connect your directories** — click **Add Directory**, then **AD forest account**. Leave
+   **Create new AD account** selected (the dialog itself recommends it) and provide the Enterprise
+   Admin (or delegated) credentials from §4 for `corp.unreadlines.com`. Entra Connect creates a
+   dedicated `MSOL_<random>` account in the forest root's `Users` container and grants it exactly the
+   rights Password Hash Sync needs — nothing to configure by hand. Since a recent build, the wizard
+   outright refuses an Enterprise Admin or Domain Admin account used directly as this connector
+   account, so **Use existing AD account** is only worth choosing if a dedicated service account was
+   already pre-created and pre-permissioned before reaching this screen — not something to improvise
+   mid-wizard.
 5. **Microsoft Entra sign-in configuration** — confirm `userPrincipalName` is selected as the attribute
    used for the Microsoft Entra username; do not switch it to `mail` — the whole point of this design is
-   keeping the two separate (`reference/active-directory-entra-identity-design.md` §2 and §7).
+   keeping the two separate (`reference/active-directory-entra-identity-design.md` §2 and §7). The page
+   lists every UPN suffix present in the forest and its Entra verification status: `id.unreadlines.com`
+   shows **Verified**, but `corp.unreadlines.com` — the forest's default UPN suffix, present whether or
+   not anything actually uses it — shows **Not Added**, and **Next** stays disabled until **Continue
+   without matching all UPN suffixes to verified domains** is checked. Check it: `corp.unreadlines.com`
+   is deliberately never added to Entra (§1), and the OU filtering in the next step only ever brings in
+   accounts already on the verified `id.unreadlines.com` suffix, so the warning describes a case this
+   lab never creates.
 6. **Domain and OU filtering** — select **Sync selected domains and OUs**, expand
    `corp.unreadlines.com` → `UnreadLines` → `U01`, and check only the `Users` OU under the site actually
    holding pilot accounts (`PAR` at the time of writing). Leave `Workstations`, `Servers`, `Groups` and
-   `ServiceAccounts` unchecked, and leave `MAR`/`BDX` unchecked until §12 extends the pilot. See the
-   filtering limit called out in §2 before relying on this step to keep `a...` accounts out.
-7. **Uniquely identifying your users** — leave the default (`ObjectGUID` as the source anchor).
+   `ServiceAccounts` unchecked, and leave `MAR`/`BDX` unchecked until §12 extends the pilot. `Groups`
+   stays out deliberately, not just for now: this pilot syncs user identities only, keeping cloud and
+   on-premises object management cleanly separated until group-based licensing or Conditional Access
+   gives a real reason to bring groups over (§12). See the filtering limit called out in §2 before
+   relying on this step alone to keep `a...` accounts out.
+7. **Uniquely identifying your users** — leave both defaults: **Users are represented only once across
+   all directories** (there is only one AD forest here, so the multi-forest matching options below it
+   don't apply), and **Let Azure manage the source anchor**. That second default is not `ObjectGUID`
+   despite older Azure AD Connect documentation still floating around — current Entra Connect Sync
+   defaults to `mS-DS-ConsistencyGuid`, writing it back to each on-premises user automatically since the
+   attribute is unused here (the info banner on this page confirms it). Unlike `ObjectGUID`,
+   `mS-DS-ConsistencyGuid` survives an object being moved or rebuilt, which is exactly why Microsoft
+   moved the default to it.
 8. **Filter users and devices** — leave **Synchronize all users and devices** (the OU filtering in step
    6 is the only scoping mechanism used here).
-9. **Optional features** — leave everything unchecked. Password writeback, Group writeback and the
-   other optional features are explicitly out of scope (§2, §12).
+9. **Optional features** — **Password hash synchronization** already shows checked here, grayed out —
+   that's this page reflecting the sign-in method chosen in step 2, not a new choice. Check **Password
+   writeback**: it has no dependency on anything else selected on this page, and the AD DS connector
+   account created in step 4 (**Create new AD account**) is granted the extra permission it needs
+   automatically, same as it is for Password Hash Sync itself — nothing to configure by hand on the
+   on-premises side. Checking the box here only turns on the on-premises half of the feature, though:
+   Self-Service Password Reset still has to be turned on separately, tenant-side, in Microsoft Entra
+   (*Protection* → *Password reset*) before any synced user can actually use it — not done as part of
+   this runbook, tracked in §12. Leave every other box unchecked: Exchange hybrid deployment, Exchange
+   Mail Public Folders, Microsoft Entra ID app and attribute filtering, Group writeback, Device
+   writeback, and Directory extension attribute sync are all explicitly out of scope (§2, §12) — the
+   last one in particular is worth revisiting only if a real need for syncing a custom AD attribute
+   into Entra shows up later.
 10. **Ready to configure** — leave **Start the synchronization process when configuration completes**
-    checked, click **Install**, then **Exit** once it finishes.
+    checked, click **Install**. The final **Configuration complete** page is worth reading before
+    clicking **Exit** — it surfaces three things: it confirms the source anchor decided in step 7
+    (`mS-DS-ConsistencyGuid`); it flags that the **Active Directory Recycle Bin is not enabled** on
+    `corp.unreadlines.com` and recommends enabling it; and it recommends configuring a **TPM** on this
+    server for extra protection of the sync engine's stored credentials. Neither of the last two is
+    addressed by this runbook — both are tracked as follow-ups in §12. Click **Exit** once noted.
 
 ## 9. Run and validate the initial synchronization
 
@@ -363,7 +408,7 @@ Pilot user            : synced, UserPrincipalName ends in @id.unreadlines.com,
 Per `reference/naming-conventions.md` §2, record the assigned name, role, site, IP address and status in
 `reference/vm-inventory.md` — already reflected there alongside this lab.
 
-## 12. Next step — extend the sync beyond the pilot
+## 12. Next step and other follow-ups
 
 1. Migrate the remaining AD users' UPN to `id.unreadlines.com`, following the dry-run-then-apply pattern
    in `reference/active-directory-entra-identity-design.md` §6.3.
@@ -380,6 +425,17 @@ Per `reference/naming-conventions.md` §2, record the assigned name, role, site,
    currently used for tenant administration does not follow the opaque `cXXXXXXXXXX` cloud-admin format
    `reference/naming-conventions.md` §5.2 defines — worth a dedicated pass before hybrid identity work
    goes further.
+6. Turn on Self-Service Password Reset in Microsoft Entra (*Protection* → *Password reset*) — Password
+   writeback was enabled in §8, step 9, but that only turns on the on-premises half of the feature; SSPR
+   is what actually lets a synced user reset a password from the cloud and have it written back to
+   `corp.unreadlines.com`. Not done as part of this runbook.
+7. Enable the Active Directory Recycle Bin on the `corp.unreadlines.com` forest — flagged by the
+   Microsoft Entra Connect wizard itself at the end of §8 (step 10) as not currently enabled. Without it,
+   there is no supported recovery path for an AD object (including a synced user) deleted by mistake once
+   hybrid sync is live. Not addressed by this runbook.
+8. Consider configuring a TPM on `U01PARVMECN01`, per the wizard's own recommendation at the end of §8
+   (step 10), for stronger protection of the sync engine's stored credentials. Depends on whether the
+   underlying VM/hypervisor can expose a virtual TPM — not evaluated yet.
 
 ## 13. References
 
