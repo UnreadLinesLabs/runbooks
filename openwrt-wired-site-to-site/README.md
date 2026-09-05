@@ -249,15 +249,18 @@ uci commit network
 /etc/init.d/network restart
 ```
 
-Verify the link comes up on both sides. `wired` is the UCI logical interface name, not the Linux
-device name — check the actual device (`eth3`) or ask `netifd` for the logical interface's status:
+Verify the interface and route came up on both sides. `wired` is the UCI logical interface name, not
+the Linux device name — check the actual device (`eth3`) or ask `netifd` for the logical interface's
+status:
 
 ```sh
 ip addr show eth3
 ifstatus wired
-ping -c 3 10.20.20.1   # from FWL02
-ping -c 3 10.20.20.2   # from FWL01
 ```
+
+Don't test with `ping` yet — `eth3`/`wired` isn't in any firewall zone at this point, so OpenWrt drops
+the traffic by default even though the addressing and route above are already correct. That test comes
+at the end of section 9, once the zone exists.
 
 ## 9. Configure the firewall zone for the wired link
 
@@ -284,6 +287,13 @@ uci set firewall.@forwarding[-1].dest='lan'
 uci commit firewall
 
 /etc/init.d/firewall restart
+```
+
+Now the link can actually be tested end to end:
+
+```sh
+ping -c 20 10.20.20.1   # from FWL02
+ping -c 20 10.20.20.2   # from FWL01
 ```
 
 ## 10. Switch between the wired link and the Wi-Fi tunnel
