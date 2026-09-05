@@ -257,11 +257,11 @@ part of this runbook's own expected final state (§10), not something to trouble
 
 1. Download the latest Microsoft Entra Connect Sync installer from the **Microsoft Entra admin
    center** — not the Microsoft Download Center, which Microsoft stopped using for new Entra Connect
-   Sync releases (see §13). In [Microsoft Entra admin center](https://entra.microsoft.com) → *Identity*
-   → *Hybrid management* → *Microsoft Entra Connect* → **Connect Sync** tab, the status reads
-   **Microsoft Entra Connect sync: Not installed** with a **Download Microsoft Entra Connect Sync on
-   Get Started > Manage tab** shortcut — follow it to the **Get started** tab's **Manage** sub-tab and
-   download the installer from there. Copy it to `U01PARVMECN01`.
+   Sync releases (see §13). In [Microsoft Entra admin center](https://entra.microsoft.com), left-hand
+   menu, under **Entra ID** → **Entra Connect** → **Connect Sync** tab, the status reads **Microsoft
+   Entra Connect sync: Not installed** with a **Download Microsoft Entra Connect Sync on Get Started >
+   Manage tab** shortcut — follow it to the **Get started** tab's **Manage** sub-tab and download the
+   installer from there. Copy it to `U01PARVMECN01`.
 2. Run the installer as Administrator.
 3. Accept the license terms and privacy notice.
 4. On the **Express Settings** page, click **Customize** instead of using Express Settings — Express
