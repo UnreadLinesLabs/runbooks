@@ -258,10 +258,17 @@ part of this runbook's own expected final state (§10), not something to trouble
 1. Download the latest Microsoft Entra Connect Sync installer from the **Microsoft Entra admin
    center** — not the Microsoft Download Center, which Microsoft stopped using for new Entra Connect
    Sync releases (see §13). In [Microsoft Entra admin center](https://entra.microsoft.com), left-hand
-   menu, under **Entra ID** → **Entra Connect** → **Connect Sync** tab, the status reads **Microsoft
-   Entra Connect sync: Not installed** with a **Download Microsoft Entra Connect Sync on Get Started >
-   Manage tab** shortcut — follow it to the **Get started** tab's **Manage** sub-tab and download the
-   installer from there. Copy it to `U01PARVMECN01`.
+   menu, under **Entra ID** → **Entra Connect** → **Get started** tab → **Manage** sub-tab, download the
+   installer from there.
+
+   **Two different installers live behind this same area, and it is easy to grab the wrong one — stop
+   and check the downloaded file name before copying it anywhere.** The **Cloud sync** tab (and its own
+   *Agent → Download on-premises agent* link) gives `AADConnectProvisioningAgentSetup.exe`, the Cloud
+   Sync agent this lab explicitly does not use (§2). What this step actually needs is
+   **`AzureADConnect.msi`** — still under that historical file name even though the product itself is
+   now called Microsoft Entra Connect — downloaded from the **Get started → Manage** sub-tab, not from
+   the Cloud sync tab. If the file on disk is the `.exe` Provisioning Agent, delete it and go back for
+   the `.msi`. Copy `AzureADConnect.msi` to `U01PARVMECN01`.
 2. Run the installer as Administrator.
 3. Accept the license terms and privacy notice.
 4. On the **Express Settings** page, click **Customize** instead of using Express Settings — Express
@@ -278,6 +285,15 @@ Still inside the same custom-installation wizard, on `U01PARVMECN01`:
    unchecked (out of scope, see §12), click **Next**.
 3. **Connect to Microsoft Entra ID** — sign in with the Hybrid Identity Administrator (or Global
    Administrator) cloud account from §4.
+
+   **On Windows Server, this sign-in window is Internet Explorer's engine, and Internet Explorer
+   Enhanced Security Configuration (IE ESC) is on by default — it blocks `https://aadcdn.msauth.net`
+   and the sign-in page never renders.** Fastest fix: *Server Manager* → *Local Server* → **IE Enhanced
+   Security Configuration** → set it to **Off** for Administrators, close and reopen the sign-in step.
+   Turn it back **On** once §8 finishes — it's a server-wide security control, not something this lab
+   needs left off. The dialog's own **Add…** button (adding `aadcdn.msauth.net` to Trusted sites) works
+   too, but expect to repeat it for `login.microsoftonline.com` and `login.windows.net` when the wizard
+   hits them next — disabling IE ESC avoids doing this domain by domain.
 4. **Connect your directories** — click **Add Directory**, then **AD forest account**, and provide the
    Enterprise Admin (or delegated) credentials from §4 for `corp.unreadlines.com`.
 5. **Microsoft Entra sign-in configuration** — confirm `userPrincipalName` is selected as the attribute
