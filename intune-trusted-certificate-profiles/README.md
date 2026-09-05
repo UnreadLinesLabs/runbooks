@@ -183,10 +183,10 @@ Property/Operator/Value the same way as the first row.
 
 | Group name | Group description | Rule, as entered in the builder |
 | --- | --- | --- |
-| `SG-U00-Intune-TrustedCert-Windows` | Windows devices enrolled in Intune — targeted by the two Windows Trusted certificate profiles (§7). | `deviceOSType` **Equals** `Windows` |
-| `SG-U00-Intune-TrustedCert-AndroidCorp` | Corporate-owned Android Enterprise devices — targeted by the Android (Corp) Trusted certificate profiles (§8). | `deviceOSType` **Starts With** `Android` **And** `deviceOwnership` **Equals** `Company` |
-| `SG-U00-Intune-TrustedCert-AndroidBYOD` | Personally-owned (BYOD) Android Enterprise devices — targeted by the Android (BYOD) Trusted certificate profiles (§9). | `deviceOSType` **Starts With** `Android` **And** `deviceOwnership` **Equals** `Personal` |
-| `SG-U00-Intune-TrustedCert-iOS` | iPhone and iPad devices — targeted by the iOS/iPadOS Trusted certificate profiles (§10). | `deviceOSType` **Equals** `iPad` **Or** `deviceOSType` **Equals** `iPhone` |
+| `SG-U00-Intune-TrustedCert-Windows` | Windows devices enrolled in Intune — targeted by the two Windows Trusted certificate profiles (§7). | `(device.deviceOSType -eq "Windows")` |
+| `SG-U00-Intune-TrustedCert-AndroidCorp` | Corporate-owned Android Enterprise devices — targeted by the Android (Corp) Trusted certificate profiles (§8). | `(device.deviceOSType -startsWith "Android") -and (device.deviceOwnership -eq "Company")` |
+| `SG-U00-Intune-TrustedCert-AndroidBYOD` | Personally-owned (BYOD) Android Enterprise devices — targeted by the Android (BYOD) Trusted certificate profiles (§9). | `(device.deviceOSType -startsWith "Android") -and (device.deviceOwnership -eq "Personal")` |
+| `SG-U00-Intune-TrustedCert-iOS` | iPhone and iPad devices — targeted by the iOS/iPadOS Trusted certificate profiles (§10). | `(device.deviceOSType -eq "iPad") -or (device.deviceOSType -eq "iPhone")` |
 
 This is the same four rules as §3, entered field by field instead of as one string — the builder
 assembles the identical `(device.deviceOSType -eq "Windows")`-style syntax underneath, visible read-only
