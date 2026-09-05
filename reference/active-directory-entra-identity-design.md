@@ -3,7 +3,7 @@
 > **Purpose**
 > Define the domain architecture and the hybrid identity strategy across Active Directory Domain Services (AD DS), Microsoft Entra ID and Microsoft 365: which domain carries what, how the UPN suffix is configured and synced, and in which order to deploy.
 >
-> **Scope**: this document covers only the AD DS / DNS / Entra ID architecture and synchronization. The naming rules themselves (user/admin account format, service accounts, groups, OUs, servers) are centralized in `server-naming-convention.md`, referenced below wherever relevant.
+> **Scope**: this document covers only the AD DS / DNS / Entra ID architecture and synchronization. The naming rules themselves (user/admin account format, service accounts, groups, OUs, servers) are centralized in `naming-conventions.md`, referenced below wherever relevant.
 
 ---
 
@@ -25,7 +25,7 @@ unreadlines.com          → Communication / public email address
 
 The AD domain stays an internal technical namespace; there is no need for users to sign in with `user@corp.unreadlines.com`. An **Alternative UPN suffix** (`id.unreadlines.com`) carries the sign-in identity, independently of the AD domain's DNS name.
 
-**Reference example** (used throughout this document — detailed account format in `server-naming-convention.md` §5):
+**Reference example** (used throughout this document — detailed account format in `naming-conventions.md` §5):
 
 | Attribute | Value |
 |---|---|
@@ -44,7 +44,7 @@ With `u783476512@id.unreadlines.com`, the login can no longer be derived directl
 
 **⚠️ This is only a defense-in-depth measure.** It does not replace: MFA, passkeys/FIDO2, Windows Hello for Business, Conditional Access, Smart Lockout, Microsoft Entra ID Protection, Password Protection, password policies, or separation of privileged accounts (see §7).
 
-The exact identifier format (`u`/`a`/`c` prefix + 9 digits) and the full account taxonomy are defined in `server-naming-convention.md` §5.
+The exact identifier format (`u`/`a`/`c` prefix + 9 digits) and the full account taxonomy are defined in `naming-conventions.md` §5.
 
 ---
 
@@ -197,7 +197,7 @@ Entra : userPrincipalName = u783476512@id.unreadlines.com
 
 **Why `id.unreadlines.com` must be verified before sync**: Entra ID requires the synced UPN suffix to match a verified custom domain. If an AD account carries `u783476512@id.unreadlines.com` but `id.unreadlines.com` is not verified in the tenant, Entra may substitute the suffix with the native domain (`u783476512@<tenant>.onmicrosoft.com`).
 
-**Which account types get synced** (full type taxonomy in `server-naming-convention.md` §5):
+**Which account types get synced** (full type taxonomy in `naming-conventions.md` §5):
 
 | Type | Synchronization |
 |---|---|
@@ -293,13 +293,13 @@ User              u783476512@id.unreadlines.com
 Public email      jean.dupont@unreadlines.com
 ```
 
-This separation is deliberate. It aims to keep a clean technical AD domain, use a consistent identity namespace, avoid revealing the login directly from the public email address, and keep an identity that stays stable over time (naming rules detailed in `server-naming-convention.md`).
+This separation is deliberate. It aims to keep a clean technical AD domain, use a consistent identity namespace, avoid revealing the login directly from the public email address, and keep an identity that stays stable over time (naming rules detailed in `naming-conventions.md`).
 
 ```text
-WHO the user is                →  u783476512  (server-naming-convention.md §5)
+WHO the user is                →  u783476512  (naming-conventions.md §5)
 HOW they authenticate          →  u783476512@id.unreadlines.com  (this document, §6-7)
 HOW they communicate           →  jean.dupont@unreadlines.com
-WHERE / WHAT they administer   →  OUs + groups + delegations  (server-naming-convention.md §3-4)
+WHERE / WHAT they administer   →  OUs + groups + delegations  (naming-conventions.md §3-4)
 ```
 
 It must be paired with Microsoft's modern authentication and identity protection controls (§9) — login opacity is only one layer among many.

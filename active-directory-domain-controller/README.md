@@ -45,7 +45,7 @@ grows — `ad-cs-pki-deployment/README.md` and `radius-nps-deployment/README.md`
 machines for exactly that reason.
 
 Naming for the accounts, groups and OUs this forest will hold is defined in
-`reference/server-naming-convention.md`. The hybrid identity design that sits on top of it — including
+`reference/naming-conventions.md`. The hybrid identity design that sits on top of it — including
 the `unreadlines.com` UPN suffix mentioned below — is in
 `reference/active-directory-entra-identity-design.md`.
 
@@ -300,7 +300,7 @@ Do not install the PKI, Entra Connect, NPS, DHCP, or application roles on this d
 
 ## 13. Update the infrastructure inventory
 
-Per `reference/server-naming-convention.md` §2, record the assigned name, role, site, IP address and
+Per `reference/naming-conventions.md` §2, record the assigned name, role, site, IP address and
 owner in `reference/vm-inventory.md`. `U01PARVMDOM01` is already listed there as the AD DS/DNS server
 for Subnet 1 — confirm the row still matches what was actually deployed.
 

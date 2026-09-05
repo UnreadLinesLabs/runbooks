@@ -1,8 +1,8 @@
 # UnreadLines — Virtual Machine Inventory
 
-> Scope: the authoritative list of every virtual machine deployed across the UnreadLines Labs infrastructure — name, role, network placement, IP address, gateway, and status. Naming follows `server-naming-convention.md`; the two-subnet / two-OpenWrt lab topology is defined in `openwrt-wireguard-site-to-site/README.md`.
+> Scope: the authoritative list of every virtual machine deployed across the UnreadLines Labs infrastructure — name, role, network placement, IP address, gateway, and status. Naming follows `naming-conventions.md`; the two-subnet / two-OpenWrt lab topology is defined in `openwrt-wireguard-site-to-site/README.md`.
 >
-> Update this file whenever a VM is created, renamed, re-IPed, retired, or its role changes — per `server-naming-convention.md` §2 ("Record the assigned name, role, site, IP address, and owner in the infrastructure inventory").
+> Update this file whenever a VM is created, renamed, re-IPed, retired, or its role changes — per `naming-conventions.md` §2 ("Record the assigned name, role, site, IP address, and owner in the infrastructure inventory").
 
 ---
 

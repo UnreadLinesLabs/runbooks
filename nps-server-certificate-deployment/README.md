@@ -443,7 +443,7 @@ From here on, `U01PARVMNPS01` renews `NPS Server Authentication` on its own befo
 
 ## 12. Update the infrastructure inventory
 
-Per `reference/server-naming-convention.md` §2, update `reference/vm-inventory.md`'s `U01PARVMNPS01` row: the note "NPS
+Per `reference/naming-conventions.md` §2, update `reference/vm-inventory.md`'s `U01PARVMNPS01` row: the note "NPS
 server certificate pending" no longer applies — replace it with something like "NPS server certificate issued
 (`NPS Server Authentication`, `UnreadLines Issuing CA`), autoenrolled/renewed via `PKI - NPS Autoenrollment`, and
 bound to `UnreadLines-Mobile - EAP-TLS`; SSID activation still pending `RAP01` switch-over." Leave the `Status`

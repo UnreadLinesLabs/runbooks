@@ -62,7 +62,7 @@ It does **not** activate `UnreadLines-Mobile` on `U01PARVMRAP01`. That requires 
 - `U01PARVMRAP01` is deployed with `UnreadLines-Guest` (WPA2-Personal) live and validated end-to-end. `UnreadLines-Mobile` itself is **not** pre-provisioned — `hostapd-wifi-access-point/README.md` §15's naming plan (`UnreadLines-Guest` live, `UnreadLines-Mobile` built first among the enterprise SSIDs, `UnreadLines-Corp` later) builds it as its own follow-up (a new dedicated VMware network, e.g. `VMnet4`, not a VLAN — see §11) once this lab produces a working RADIUS server. This lab only needs `RAP01`'s existing management IP (`192.168.20.145` on `ens33`) to register it as a RADIUS client — nothing about `UnreadLines-Mobile`'s future network.
 - A supported, fully updated Windows Server installation for `U01PARVMNPS01`, with local Administrator access.
 - A static IPv4 address reserved for this server: `192.168.20.46/25`.
-- The server name approved according to the infrastructure naming convention (`reference/server-naming-convention.md` already lists `U01PARVMNPS01` as the canonical NPS example).
+- The server name approved according to the infrastructure naming convention (`reference/naming-conventions.md` already lists `U01PARVMNPS01` as the canonical NPS example).
 - **Not required for this lab**: a production certificate template on `U01PARVMPKI02`. That gap is tracked in the "Next step" section below and blocks only the final `UnreadLines-Mobile` activation, not anything in this document.
 
 ## 5. Initial manual preparation
@@ -165,7 +165,7 @@ Get-ADGroupMember -Identity "RAS and IAS Servers" |
 
 ## 8. Create the Wi-Fi mobile access group
 
-**On `U01PARVMDOM01`.** Following the group naming convention (`reference/server-naming-convention.md` §4), create a dedicated security group to scope who is allowed to authenticate on `UnreadLines-Mobile`, rather than granting the Network Policy to a broad built-in group. The name mirrors the SSID it governs, the same way `hostapd-wifi-access-point/README.md` §15 names `UnreadLines-Corp` for a future, separate workstation group:
+**On `U01PARVMDOM01`.** Following the group naming convention (`reference/naming-conventions.md` §4), create a dedicated security group to scope who is allowed to authenticate on `UnreadLines-Mobile`, rather than granting the Network Policy to a broad built-in group. The name mirrors the SSID it governs, the same way `hostapd-wifi-access-point/README.md` §15 names `UnreadLines-Corp` for a future, separate workstation group:
 
 ```powershell
 New-ADGroup `
@@ -409,7 +409,7 @@ EAP-TLS            : Blocked on NPS server certificate — see Next step
 
 ## 15. Update the infrastructure inventory
 
-Per `reference/server-naming-convention.md` §2, record the assigned name, role, site, IP, and owner in `reference/vm-inventory.md` once deployed (already reflected there alongside this lab).
+Per `reference/naming-conventions.md` §2, record the assigned name, role, site, IP, and owner in `reference/vm-inventory.md` once deployed (already reflected there alongside this lab).
 
 ## 16. Next step — issue the NPS server certificate and activate `UnreadLines-Mobile`
 

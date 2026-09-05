@@ -186,7 +186,7 @@ C:\UnreadLines\
 
 Copy the contents of `C:\PKI-Backup` to protected, offline storage immediately after each backup.
 
-**Certificate extension convention.** `.crt` is the standard extension for CA certificates at the staging and publication levels. A Windows export command may initially produce a `.cer` file — `.cer` and `.crt` can both hold the same X.509 DER content, so this runbook writes certificate exports directly under their `.crt` staging name rather than exporting once and renaming afterward.
+**Certificate extension convention.** `.crt` is the standard extension for CA certificates at the staging and publication levels. A Windows export command may initially produce a `.cer` file — `.cer` and `.crt` can both hold the same X.509 certificate content, so this runbook writes certificate exports directly under their `.crt` staging name rather than exporting once and renaming afterward. The extension says nothing about the underlying encoding: `Export-Certificate` (used for the Root CA below) always produces DER, while `certreq -submit`/`-retrieve` (used for the Issuing CA) always produces Base-64 — check the actual bytes (`-----BEGIN CERTIFICATE-----` means Base-64) before assuming one or the other from the `.crt` name alone.
 
 ## 8. Initial manual preparation — standard procedure
 
@@ -1946,7 +1946,7 @@ Compare against the initial publication baseline recorded in Phase 5, right afte
 
 ## 20. Update the infrastructure inventory
 
-Per `reference/server-naming-convention.md` §2, record `U01PARVMPKI01`, `U01PARVMPKI02` and
+Per `reference/naming-conventions.md` §2, record `U01PARVMPKI01`, `U01PARVMPKI02` and
 `U01PARVMWEB01` in `reference/vm-inventory.md` — name, role, site, address and owner. All three are
 already listed there; confirm each row matches what was actually deployed, in particular that `PKI01`
 is recorded as normally powered off.

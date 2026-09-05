@@ -32,12 +32,16 @@ other runbook places its servers in.
 - [Deploy a Windows NPS RADIUS server for 802.1X enterprise Wi-Fi](radius-nps-deployment/README.md) — build `U01PARVMNPS01`, register it in AD, and configure the RADIUS client and Network Policy that will authenticate `UnreadLines-Mobile`.
 - [Issue the NPS server certificate and activate EAP-TLS for `UnreadLines-Mobile`](nps-server-certificate-deployment/README.md) — publish a Server Authentication template on `U01PARVMPKI02`, enroll it on `U01PARVMNPS01`, and bind it into the `UnreadLines-Mobile - EAP-TLS` Network Policy.
 
+### Device management
+
+- [Deploy Intune trusted certificate profiles for the UnreadLines CA hierarchy](intune-trusted-certificate-profiles/README.md) — publish Root and Issuing CA trust profiles for Windows, Android Enterprise (Corporate and BYOD) and iOS/iPadOS, each scoped to its own dynamic Entra ID group.
+
 ## Reference
 
 Conventions, design decisions and inventories that cut across every runbook above. Check them before
 inventing a name or an address.
 
-- [Server naming convention](reference/server-naming-convention.md) — naming for servers, accounts, groups and organizational units.
+- [Naming conventions](reference/naming-conventions.md) — naming for servers, accounts, groups, organizational units, cloud identity objects (Entra ID / Intune) and Azure resources.
 - [Active Directory + Microsoft Entra ID — hybrid identity design](reference/active-directory-entra-identity-design.md) — domain architecture, UPN suffix strategy, and Entra Connect sync design.
 - [Virtual machine inventory](reference/vm-inventory.md) — the authoritative list of every lab VM: name, role, IP, gateway and status.
 

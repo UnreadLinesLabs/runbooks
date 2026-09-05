@@ -30,8 +30,8 @@ runbooks/
   `GG-U01-PAR-WiFi-Mobile`, `/etc/hostapd/hostapd.conf`.
 - Fenced code blocks carry a language hint (`powershell`, `bash`, `text`).
 - Reference another document by relative path so the link survives: `radius-nps-deployment/README.md`,
-  `reference/server-naming-convention.md`. Never an absolute `github.com` URL to this repository.
-- Names must follow `reference/server-naming-convention.md`. Check it before inventing one.
+  `reference/naming-conventions.md`. Never an absolute `github.com` URL to this repository.
+- Names must follow `reference/naming-conventions.md`. Check it before inventing one.
 - **The title is an imperative**: "Create a Broadcom account", not "Creating a Broadcom account".
 - **Placeholders go in angle brackets, in PascalCase**: `<CaName>`, `<SamAccountName>`, `<CertificateName>`.
   A reader must never be able to run a command with a placeholder still in it — say so explicitly next to
@@ -187,7 +187,7 @@ Design documents, not procedures. Lighter:
     *Part of [UnreadLines Labs](https://youtube.com/@unreadlineslabs) — real-world enterprise infrastructure, identity, and security labs, documented the way nobody else bothers to.*
 
 Same numbering rule as a runbook: every `##` section numbered, 1 to N. Other documents cite these by
-number (`reference/server-naming-convention.md` §4), so a number that moves breaks them — check with
+number (`reference/naming-conventions.md` §4), so a number that moves breaks them — check with
 `grep -rn "§" .` before renumbering an existing reference document.
 
 ## Checklist before publishing
@@ -199,7 +199,7 @@ number (`reference/server-naming-convention.md` §4), so a number that moves bre
 - [ ] Every command block says which machine it runs on.
 - [ ] No secret, private key, real tenant ID or real person's name anywhere — including inside screenshots.
 - [ ] Every relative link resolves.
-- [ ] Names match `reference/server-naming-convention.md`.
+- [ ] Names match `reference/naming-conventions.md`.
 - [ ] `reference/vm-inventory.md` is updated if a VM was added or changed.
 - [ ] The footer signature is present, copied exactly.
 - [ ] The runbook is linked from `README.md`, in the right theme group and in dependency order.
