@@ -27,8 +27,8 @@ users.
 | corp.unreadlines.com       |               +---------------+----------------+
 +--------------+-------------+                               |
                |                                              |
-        U01PARVMFWL01 ===== WireGuard tunnel ===== U01PARVMFWL02
-        192.168.20.126                              192.168.20.254 (NAT to internet)
+   U01PARVMFWL01 == WireGuard tunnel OR wired link == U01PARVMFWL02
+        192.168.20.126        (one active at a time)     192.168.20.254 (NAT to internet)
                |                                              |
                +----------------- LDAP (cross-subnet) --------+
                                                                 |
@@ -44,10 +44,18 @@ users.
 
 `U01PARVMECN01` sits in Subnet 2, on the same host and behind the same router as the PKI and web
 distribution servers, not next to the domain controller. That is deliberate, not an oversight: it
-reaches `U01PARVMDOM01` over the same FWL01↔FWL02 WireGuard tunnel every other Subnet 2 domain-joined
+reaches `U01PARVMDOM01` over the same FWL01↔FWL02 cross-subnet path every other Subnet 2 domain-joined
 server already uses for LDAP and DNS (`ad-cs-pki-deployment/README.md` §1), and it reaches Microsoft
 outbound through `U01PARVMFWL02`'s existing NAT to the home Wi-Fi/Freebox uplink — no new routing or
 firewall work on either OpenWrt router.
+
+That cross-subnet path is now one of two, per `openwrt-wired-site-to-site/README.md`: the original
+WireGuard tunnel over Wi-Fi, or a wired Ethernet interconnect added later — only one active at a time,
+switchable without touching this lab's config either way (`reference/vm-inventory.md` records which is
+currently active). If Entra Connect Sync ever shows intermittent sync failures or delays reaching
+`U01PARVMDOM01` for LDAP/DNS, that's worth checking before assuming an Entra Connect problem: the
+Wi-Fi tunnel measured real packet loss from radio interference in this lab (`openwrt-wired-site-to-site/
+README.md` §5), and switching to the wired link (§10 there) removes it from the equation entirely.
 
 ## 2. Scope and dependencies
 
@@ -247,8 +255,13 @@ part of this runbook's own expected final state (§10), not something to trouble
 
 **On `U01PARVMECN01`:**
 
-1. Download the latest Microsoft Entra Connect installer from the Microsoft Download Center (link in
-   §13) and copy it to the server.
+1. Download the latest Microsoft Entra Connect Sync installer from the **Microsoft Entra admin
+   center** — not the Microsoft Download Center, which Microsoft stopped using for new Entra Connect
+   Sync releases (see §13). In [Microsoft Entra admin center](https://entra.microsoft.com) → *Identity*
+   → *Hybrid management* → *Microsoft Entra Connect* → **Connect Sync** tab, the status reads
+   **Microsoft Entra Connect sync: Not installed** with a **Download Microsoft Entra Connect Sync on
+   Get Started > Manage tab** shortcut — follow it to the **Get started** tab's **Manage** sub-tab and
+   download the installer from there. Copy it to `U01PARVMECN01`.
 2. Run the installer as Administrator.
 3. Accept the license terms and privacy notice.
 4. On the **Express Settings** page, click **Customize** instead of using Express Settings — Express
@@ -358,7 +371,7 @@ Per `reference/naming-conventions.md` §2, record the assigned name, role, site,
 - [Choose the right authentication method for your Microsoft Entra hybrid identity solution](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/choose-ad-authn) — Password Hash Sync vs. Pass-through Authentication vs. Federation, the decision made in §3.
 - [Microsoft Entra Connect Sync: Configure filtering](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-sync-configure-filtering) — domain/OU filtering (§8) and the attribute-based alternative flagged in §2 and §12.
 - [Microsoft Entra Connect: Design concepts](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/plan-connect-design-concepts) — referenced in `reference/active-directory-entra-identity-design.md` §12.
-- [Download Microsoft Entra Connect](https://www.microsoft.com/en-us/download/details.aspx?id=47594)
+- [Microsoft Entra Connect: Version release history](https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/reference-connect-version-history) — confirms the installer is exclusively available from the Microsoft Entra admin center (§7); the Microsoft Download Center no longer carries new releases.
 
 ---
 
