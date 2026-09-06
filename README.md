@@ -26,6 +26,8 @@ other runbook places its servers in.
 ### Identity and PKI
 
 - [Deploy the first Active Directory domain controller](active-directory-domain-controller/README.md) — create the `corp.unreadlines.com` forest, its first domain controller, and the DNS service that comes with it.
+- [Create the KDS root key for Group Managed Service Accounts (gMSA)](configure-kds-root-key-for-gmsa/README.md) — create and verify the forest's KDS root key, the one-time prerequisite every gMSA depends on.
+- [Create a Group Managed Service Account (gMSA)](create-gmsa-account/README.md) — create and install a gMSA with least-privilege password retrieval, using `gmsa-ndes$` on `U01PARVMNDS01` as the worked example.
 - [Deploy Microsoft Entra Connect and synchronize Active Directory with Microsoft Entra ID](microsoft-entra-connect-sync/README.md) — build `U01PARVMECN01`, verify the hybrid identity design already in place, and turn on Password Hash Sync between `corp.unreadlines.com` and the `unreadlines` Entra tenant.
 - [Deploy an AD CS PKI](ad-cs-pki-deployment/README.md) — stand up an offline Standalone Root CA, an online Enterprise Issuing CA, and an independent HTTP CRL/AIA distribution point, validated end to end with a real leaf certificate.
 
@@ -37,6 +39,7 @@ other runbook places its servers in.
 ### Device management
 
 - [Deploy Intune trusted certificate profiles for the UnreadLines CA hierarchy](intune-trusted-certificate-profiles/README.md) — publish Root and Issuing CA trust profiles for Windows, Android Enterprise (Corporate and BYOD) and iOS/iPadOS, each scoped to its own dynamic Entra ID group.
+- [Deploy the SCEP certificate template, NDES, and the Intune Certificate Connector](ndes-scep-intune-connector/README.md) — build `U01PARVMNDS01`, publish the `Intune SCEP Mobile User` template on `U01PARVMPKI02`, and install the Certificate Connector that lets Intune request certificates from it.
 
 ## Reference
 

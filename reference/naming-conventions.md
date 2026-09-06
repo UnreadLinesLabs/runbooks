@@ -59,6 +59,8 @@ U01PARVMDOM01
 | `FWL` | Router / Firewall (OpenWrt) |
 | `RAP` | Radio Access Point (Wi-Fi, hostapd) |
 | `ECN` | Microsoft Entra Connect Sync server |
+| `NDS` | Network Device Enrollment Service (NDES / SCEP) |
+| `PNC` | Microsoft Entra Private Network Connector |
 
 ### Examples
 
@@ -71,6 +73,8 @@ U01PARVMWEB01
 U01PARVMFWL01
 U01PARVMRAP01
 U01PARVMECN01
+U01PARVMNDS01
+U01PARVMPNC01
 ```
 
 ### Naming rules
