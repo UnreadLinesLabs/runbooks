@@ -1,7 +1,7 @@
 # Deploy the SCEP certificate template, NDES, and the Intune Certificate Connector
 
 This lab publishes `U01PARVMPKI02`'s first certificate template aimed at mobile devices, and builds
-`U01PARVMNDS01` — a new server running the Network Device Enrollment Service (NDES) role and the
+`U00PARVMNDS01` — a new server running the Network Device Enrollment Service (NDES) role and the
 Certificate Connector for Microsoft Intune. Together they let an Intune-managed phone request a
 certificate from the on-prem PKI (`ad-cs-pki-deployment`) over SCEP, without ever handing the phone a
 domain credential. It sits next to `nps-server-certificate-deployment`, which closed the *server*
@@ -9,8 +9,8 @@ half of the `UnreadLines-Mobile` EAP-TLS handshake; this lab is the first step o
 
 NDES and the Certificate Connector are installed on the same host by Microsoft's own design when SCEP
 is backed by a local (non-cloud) CA — not a choice made for this lab. What this lab deliberately does
-not do is expose that server to the internet: until `U01PARVMPNC01` and Entra Application Proxy exist
-(§15), `U01PARVMNDS01` only has to be reachable from inside the lab network, and the Connector only
+not do is expose that server to the internet: until `U00PARVMPNC01` and Entra Application Proxy exist
+(§15), `U00PARVMNDS01` only has to be reachable from inside the lab network, and the Connector only
 needs a single outbound path to the Intune service.
 
 ## 1. Architecture
@@ -22,17 +22,17 @@ U01PARVMPKI01   Offline Root CA
 U01PARVMPKI02   Issuing CA                                192.168.20.143
       |  issues on request, using the "Intune SCEP Mobile User" template
       v
-U01PARVMNDS01   NDES (IIS) + Intune Certificate Connector  192.168.20.147
+U00PARVMNDS01   NDES (IIS) + Intune Certificate Connector  192.168.20.147
       |
       |  gmsa-ndes$ requests/signs SCEP certificates on the CA's behalf
       |
       +---- outbound HTTPS 443 ---->  Microsoft Intune service
                                        (the Connector polls for pending SCEP
                                        requests — no inbound port is opened
-                                       on U01PARVMNDS01 by this lab)
+                                       on U00PARVMNDS01 by this lab)
 
 Not built yet — see §15 "Next step":
-      U01PARVMPNC01 (Entra Private Network Connector) + Entra Application Proxy,
+      U00PARVMPNC01 (Entra Private Network Connector) + Entra Application Proxy,
       the path a real mobile device will use to reach this NDES endpoint from
       outside the lab network.
 ```
@@ -66,7 +66,7 @@ lab uses is provisioned there, not here. See §5.
 ## 3. Scope and dependencies
 
 This lab covers: publishing and hardening the SCEP certificate template on `U01PARVMPKI02`, building
-`U01PARVMNDS01`, installing the NDES role and pointing it at the template, switching NDES to run under
+`U00PARVMNDS01`, installing the NDES role and pointing it at the template, switching NDES to run under
 the gMSA, and installing and registering the Intune Certificate Connector.
 
 It does **not** cover:
@@ -74,7 +74,7 @@ It does **not** cover:
 - Creating the gMSA itself. `gmsa-ndes$` is provisioned by `create-gmsa-account/README.md` — a
   reusable lab, not specific to NDES — which in turn depends on `configure-kds-root-key-for-gmsa/README.md`
   if this is the first gMSA created in this forest. This lab only consumes that account; see §5.
-- Exposing `U01PARVMNDS01` to the internet. That is Entra Private Network Connector + Application Proxy
+- Exposing `U00PARVMNDS01` to the internet. That is Entra Private Network Connector + Application Proxy
   (§15) — until it exists, no device outside the lab network can reach this SCEP endpoint at all.
 - The Intune SCEP certificate profile that actually targets a group of mobile devices — a later lab
   (item 7 above).
@@ -94,27 +94,27 @@ It does **not** cover:
 | Subject name | Supply in the request (`Web Server`'s own default — nothing to change) |
 | Request Handling — Purpose | `Signature` only |
 | Private key | Not exportable, 2048-bit RSA |
-| NDES / Connector server | `U01PARVMNDS01`, `192.168.20.147/25`, Subnet 2 |
+| NDES / Connector server | `U00PARVMNDS01`, `192.168.20.147/25`, Subnet 2 |
 | NDES service account | `gmsa-ndes$` (gMSA, provisioned in `create-gmsa-account/README.md`) |
-| Enrolled on | `U01PARVMNDS01` (NDES role, IIS `SCEP` application pool) |
+| Enrolled on | `U00PARVMNDS01` (NDES role, IIS `SCEP` application pool) |
 
 ## 5. Prerequisites
 
 - `ad-cs-pki-deployment/README.md` Checkpoint 2 reached: `U01PARVMPKI02` up, reachable, and already
   issuing from at least one production template (`nps-server-certificate-deployment/README.md` did the
   first one).
-- `U01PARVMNDS01` built per `prepare-windows-ubuntu-templates/README.md`, renamed and domain-joined per
+- `U00PARVMNDS01` built per `prepare-windows-ubuntu-templates/README.md`, renamed and domain-joined per
   `reference/naming-conventions.md` §2 and §8 — Windows Server 2025, nothing else installed on it yet.
-- **`gmsa-ndes$` already exists and is installed and tested on `U01PARVMNDS01`** — done in
+- **`gmsa-ndes$` already exists and is installed and tested on `U00PARVMNDS01`** — done in
   `create-gmsa-account/README.md` (`Install-ADServiceAccount` / `Test-ADServiceAccount` returning
   `True`), itself depending on the KDS root key from `configure-kds-root-key-for-gmsa/README.md` if
   this was the first gMSA created in the forest. Nothing in this lab creates or tests the account —
   §9 and §10 only consume it.
-- Administrative access on `U01PARVMPKI02` and `U01PARVMNDS01`.
+- Administrative access on `U01PARVMPKI02` and `U00PARVMNDS01`.
 - An account with the Intune Administrator (or Global Administrator) role on the `unreadlines` tenant,
   to register the Certificate Connector.
-- Outbound HTTPS (443) from `U01PARVMNDS01` to the Microsoft Intune service endpoints. No inbound port
-  is opened on `U01PARVMNDS01` in this lab — see §3.
+- Outbound HTTPS (443) from `U00PARVMNDS01` to the Microsoft Intune service endpoints. No inbound port
+  is opened on `U00PARVMNDS01` in this lab — see §3.
 
 ## 6. Publish the SCEP certificate template — on `U01PARVMPKI02`
 
@@ -183,7 +183,7 @@ it.
 Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
 **Certificate Template to Issue** → select `Intune SCEP Mobile User`.
 
-## 7. Install the NDES role — on `U01PARVMNDS01`
+## 7. Install the NDES role — on `U00PARVMNDS01`
 
 Add the role and its IIS dependency:
 
@@ -224,7 +224,7 @@ Confirm the site bindings look right for a lab with no external hostname yet:
 Get-Website -Name "Default Web Site" | Select-Object -ExpandProperty Bindings
 ```
 
-## 8. Point NDES at the SCEP template via the registry — on `U01PARVMNDS01`
+## 8. Point NDES at the SCEP template via the registry — on `U00PARVMNDS01`
 
 The NDES Configuration Wizard in §7 only registers its own RA templates; it has no field for the actual
 SCEP client template, which is set separately in the registry:
@@ -262,9 +262,9 @@ certsrv.msc → right-click UnreadLines Issuing CA → Properties → Security t
 This is narrower than granting Domain Admin or CA Administrator — `gmsa-ndes$` still can't change the
 CA's own configuration, only manage the certificates it's responsible for issuing.
 
-## 10. Switch the NDES application pool to the gMSA — on `U01PARVMNDS01`
+## 10. Switch the NDES application pool to the gMSA — on `U00PARVMNDS01`
 
-`U01PARVMNDS01` is still running the `SCEP` application pool under the built-in Application Pool
+`U00PARVMNDS01` is still running the `SCEP` application pool under the built-in Application Pool
 Identity from §7. This section is the documented Microsoft procedure for moving it to `gmsa-ndes$`
 afterward — it does **not** redo the RA certificates or the registry mapping from §7–§8; only the
 application pool identity and the private-key permissions on the two RA certificates change.
@@ -315,10 +315,10 @@ Invoke-WebRequest "http://localhost/certsrv/mscep/mscep.dll" -UseBasicParsing |
 Expect `200`. If this fails, re-check the two **Manage Private Keys** grants above before assuming a
 registry or CA problem.
 
-## 11. Install and register the Intune Certificate Connector — on `U01PARVMNDS01`
+## 11. Install and register the Intune Certificate Connector — on `U00PARVMNDS01`
 
 Download `IntuneCertificateConnector.exe` from the Intune admin center (**Tenant administration** →
-**Connectors and tokens** → **Certificate connectors** → **Add**), copy it to `U01PARVMNDS01`, and run
+**Connectors and tokens** → **Certificate connectors** → **Add**), copy it to `U00PARVMNDS01`, and run
 it with an account that has local administrator rights on the server.
 
 During setup:
@@ -339,7 +339,7 @@ grant).
 
 ```text
 Tenant administration → Connectors and tokens → Certificate connectors
-    → U01PARVMNDS01 : Active
+    → U00PARVMNDS01 : Active
 ```
 
 **Active** confirms the Connector has completed its first successful check-in over the outbound HTTPS
@@ -350,27 +350,27 @@ the page if it still shows the initial provisioning state.
 
 - `Intune SCEP Mobile User` exists on `U01PARVMPKI02`, issued, with the ACL from §6 — no broader
   `Enroll` grant left over from `Web Server`.
-- `U01PARVMNDS01` runs the NDES role under `gmsa-ndes$` — not the Application Pool Identity from §7 —
+- `U00PARVMNDS01` runs the NDES role under `gmsa-ndes$` — not the Application Pool Identity from §7 —
   registry-mapped to `IntuneSCEPMobileUser` (§8), confirmed answering over HTTP (§10).
 - `gmsa-ndes$` holds **Issue and Manage Certificates** on `U01PARVMPKI02` (§9) and **Read** on both RA
   certificates' private keys (§10).
-- The Certificate Connector on `U01PARVMNDS01` shows **Active** in the Intune admin center.
+- The Certificate Connector on `U00PARVMNDS01` shows **Active** in the Intune admin center.
 
 **What this does not yet prove:** no device, inside the lab network or outside it, has requested a
-certificate through this path. `U01PARVMNDS01` isn't reachable from outside the lab yet (§3), and no
+certificate through this path. `U00PARVMNDS01` isn't reachable from outside the lab yet (§3), and no
 Intune SCEP profile exists to target a device at it — both are later work (§15).
 
 ## 14. Update the infrastructure inventory
 
-Per `reference/naming-conventions.md` §2, update `reference/vm-inventory.md`'s `U01PARVMNDS01` row:
+Per `reference/naming-conventions.md` §2, update `reference/vm-inventory.md`'s `U00PARVMNDS01` row:
 change `Status` from `Planned` to `Running`, and replace the note with something like "NDES role +
 Intune Certificate Connector configured, issuing from `Intune SCEP Mobile User` on `U01PARVMPKI02`;
-not yet reachable from outside the lab network — see `U01PARVMPNC01`."
+not yet reachable from outside the lab network — see `U00PARVMPNC01`."
 
 ## 15. Next step — Entra Private Network Connector + Application Proxy
 
-`U01PARVMNDS01` is fully configured but unreachable from anywhere a real mobile device would be. The
-next lab builds `U01PARVMPNC01`, joins it to Entra Private Network Connector, and publishes this NDES
+`U00PARVMNDS01` is fully configured but unreachable from anywhere a real mobile device would be. The
+next lab builds `U00PARVMPNC01`, joins it to Entra Private Network Connector, and publishes this NDES
 endpoint through Entra Application Proxy with Passthrough pre-authentication — the only pre-auth mode
 SCEP's own protocol allows, not a weaker choice made for this lab. Only after that lab does a real
 device have a network path to the template and Connector built here.

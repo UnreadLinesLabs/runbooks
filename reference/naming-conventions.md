@@ -18,6 +18,24 @@ MAR = Marseille
 BDX = Bordeaux
 ```
 
+**A server name carries two independent things: which entity administratively owns it, and which city it
+physically runs in.** The two don't have to agree. `U01PARVMPKI01` reads as "France's, hosted in Paris";
+`U00PARVMNDS01` reads as "the company's, hosted in Paris" — same real hardware in the same city, different
+entity because the *service* is scoped differently: a country's own infrastructure vs. something shared by
+the whole company regardless of country. A VM's city segment is never `U00` alone — every physical machine
+runs somewhere real, so the city segment always names a real city, whichever entity owns the VM. `U00` with
+no city at all (§9.1) is reserved for objects with no physical location whatsoever: a cross-site AD/Entra
+group (`GG-U00-ADM-Global`), a tenant-wide Intune policy, the `OU=U00` branch itself (§3) — never a VM.
+
+**Renaming an already-built, already-documented server for this is expensive** — every runbook, screenshot
+and cross-reference that names it has to be found and updated, and a renamed *folder* also breaks any
+published video URL (`context.md` §6). `U01PARVMPKI01`/`02` stay `U01PAR` even though the PKI they run is
+company-wide, precisely because `ad-cs-pki-deployment/README.md` already documents them under that name —
+the inconsistency is accepted and will be called out as "written before this convention existed" rather
+than silently hidden. A server with no runbook written yet (`U01PARVMNDS01`, `U01PARVMPNC01` — both still
+`Planned` in `vm-inventory.md`, backlog items 4-5) costs nothing to rename now and gets it right from the
+start: `U00PARVMNDS01`, `U00PARVMPNC01`.
+
 ---
 
 ## 2. Server naming convention
@@ -98,15 +116,31 @@ Site and entity codes (§1) structure the OU tree; they are not carried into hum
 ```text
 corp.unreadlines.com
 └── OU=UnreadLines
-    └── OU=U01
-        ├── OU=PAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
-        ├── OU=MAR  (Users, Workstations, Servers, Groups, ServiceAccounts)
-        └── OU=BDX  (Users, Workstations, Servers, Groups, ServiceAccounts)
+    ├── OU=U00                 (Global / cross-site)
+    │   ├── OU=Accounts        (a-accounts only — see below)
+    │   ├── OU=Groups          (groups scoped to the whole company, incl. GG-U00-ADM-Global — see below)
+    │   ├── OU=Servers         (servers/computer objects managed at company level, not one city)
+    │   └── OU=ServiceAccounts (service accounts/gMSA used company-wide)
+    └── OU=U01                 (France)
+        ├── OU=Groups          (groups scoped to France, incl. every city's GG-U01-<city>-ADM-* — see below)
+        ├── OU=Servers         (servers/computer objects managed at country level, not one city)
+        ├── OU=ServiceAccounts (service accounts/gMSA scoped to France as a whole)
+        ├── OU=PAR  (Accounts, Computers, Groups, Servers, ServiceAccounts)
+        ├── OU=MAR  (Accounts, Computers, Groups, Servers, ServiceAccounts)
+        └── OU=BDX  (Accounts, Computers, Groups, Servers, ServiceAccounts)
 ```
 
 `OU=UnreadLines` is a single top-level OU holding everything below it, kept separate from AD's built-in containers (`CN=Users`, `CN=Computers`, `CN=System`, ...) — it was renamed from an initial `UnreadLines Labs` to match the company name used everywhere else (`UnreadLines Root CA`, `UnreadLines Issuing CA`, the `corp.unreadlines.com` domain itself); "Labs" is the name of the project/channel producing these runbooks, not a name that belongs inside the fictional company's own AD.
 
-A user can physically sit in `OU=Users,OU=PAR,OU=U01,OU=UnreadLines,DC=corp,DC=unreadlines,DC=com` while having a login that is independent of the site (see §4).
+**`OU=U00` and `OU=U01` are siblings at the same level, for the same reason they're siblings in §1**: every direct child of `OU=UnreadLines` is an entity code, so reading the top of the tree tells you which entity (not which purpose) an object belongs to before you go one level deeper — exactly the way `OU=U01` branches into its cities (`PAR`/`MAR`/`BDX`), `OU=U00` branches into its own children. That symmetry is what keeps the tree extensible without a redesign: a second country becomes a sibling of `OU=U01` with the same shape underneath, not a reason to restructure anything.
+
+**`Groups`, `Servers` and `ServiceAccounts` exist at every entity level — global (`OU=U00`), country (`OU=U01`), and city (`OU=PAR`/`MAR`/`BDX`)** — a group, a managed server or a service account can legitimately be scoped to exactly one city, to a whole country regardless of city, or to the whole company regardless of country, and each scope gets its own OU so it is visible from the path alone, not just from the name (a service account used by an application that runs for every French site, not just Paris, belongs in `OU=U01/ServiceAccounts`, not in one city's). Each `ServiceAccounts` OU is flat and does not get re-split by entity underneath itself — the `U00`/`U01`/city branching happens exactly once, at the top of the tree; there is no `OU=U00/ServiceAccounts/U01`. In practice `OU=U00/ServiceAccounts` mostly ends up holding accounts for infrastructure that is inherently company-wide by function, not by hosting location: AD DS/replication, the PKI (`ad-cs-pki-deployment`), NDES/Intune Certificate Connector, Microsoft Entra Connect — one shared forest, one shared CA hierarchy, one shared tenant, regardless of which city's hardware the VM (`U01PARVMPKI01`, `U01PARVMNDS01`, `U01PARVMECN01`, ...) happens to run on (§1's `U00` clarification above already covers why the VM name itself still carries `U01PAR`). A service account tied to something genuinely city-specific instead — a file server used only by the Bordeaux office, say — goes in that city's own `ServiceAccounts`.
+
+**`Accounts` and `Computers` are the two exceptions: city-only**, except that `OU=U00/Accounts` also exists, for a different reason than the other `U00`/`U01` OUs above. A person always works out of one physical office, and a workstation (like a server, §2) always runs in one physical city — there is no "France, no particular city" flavor of either, so neither gets a country-level OU, and `Computers` doesn't exist at `U00` either. `OU=U00/Accounts`, by contrast, is not a "global computer/workstation"-style exception — it exists because **exactly one account type has no city to begin with**: an `a…` account's scope lives entirely in its `GG-*-ADM-*` group memberships (§4), which can span one city, all of France, or the whole company and can change without the account moving — so unlike a `u…` account, it was never going to sit in any one city's `Accounts` OU. Putting every `a…` account in `OU=U00/Accounts` also buys tier isolation for free: a GPO or a delegation scoped to `OU=U01/*/Accounts` or `OU=U01/*/Computers` never reaches an administrator account, and a helpdesk delegation over a city's `Accounts` OU carries no rights over `OU=U00/Accounts`. Naming this OU `Accounts` rather than `Users` matters here too: `u…` and `a…` sit in an OU of the same name at two different points in the tree, which matches the vocabulary §5 already uses (`Account naming`, `Account type matrix`) and gives Microsoft Entra Connect's OU-based sync filtering a clean line to draw, since every `a…` account is now outside every city's `Accounts` OU by construction, not merely by convention.
+
+A city's own `Groups` OU holds only its non-`ADM` groups (`GG-U01-PAR-Users`, `GG-U01-PAR-IT`, `GG-U01-PAR-Helpdesk`) — **an `ADM` group is never placed in the `Groups` OU of the OU subtree it delegates rights over; it goes one level up instead.** `GG-U01-PAR-ADM-Servers` and `GG-U01-PAR-ADM-Workstations` delegate rights inside `OU=PAR`, so they live in `OU=U01/Groups`, not `OU=PAR/Groups`: whoever only holds the rights those groups grant has no rights over `OU=U01` at all, and so cannot touch `OU=U01/Groups` to add themselves, or anyone else, to their own delegation group. The same rule pushes one level higher again — whoever can manage `OU=U01/Groups` (and so, indirectly, every city's `ADM` membership) needs delegated rights on `OU=U01` itself, and that delegation has to be granted from `OU=U00`, one level up from `OU=U01`. `GG-U00-ADM-Global` is where that chain ends: it lives in `OU=U00/Groups`, at the top of the custom tree, so there is no further OU to push it up into — its own membership has to be anchored by AD's built-in tier-0 protection (`Domain Admins`/`Enterprise Admins`), not by another custom group, because nothing in this tree sits above `OU=U00`. The same one-level-up placement applies to any other group that itself grants delegated rights (`GG-U01-PAR-Helpdesk` included, if it is ever wired into an actual OU delegation rather than just used for ticketing/routing) — a plain membership or workload group, which grants no rights of its own, has no such constraint and stays at the level matching its own scope, same as `ServiceAccounts`.
+
+A user can physically sit in `OU=Accounts,OU=PAR,OU=U01,OU=UnreadLines,DC=corp,DC=unreadlines,DC=com` while having a login that is independent of the site (see §4). A new country adds a sibling of `OU=U01` (e.g. `OU=U02`) with its own `Groups`/`Servers`/`ServiceAccounts` plus the same five-OU pattern under each of its cities; `OU=U00` does not change shape when a country is added.
 
 ---
 
@@ -131,6 +165,12 @@ Add-ADGroupMember    GG-U01-BDX-ADM-Servers a783476512
 ```
 
 This pattern is for **on-premises Active Directory groups**, scoped by physical site. Cloud-only groups that exist only in Entra ID — with no site to scope to — follow §9 instead.
+
+**The site segment is omitted, not replaced by a placeholder, whenever a group has no single city to scope to.** `GG-U00-ADM-Global` already does this: `GG-<Entity>-<Purpose>`, no site, because `U00` by definition never has one. The same omission applies one level down, for a group scoped to all of France but not to one particular city — `GG-U01-ADM-<Purpose>`, not `GG-U01-<some invented city>-ADM-<Purpose>`. Nothing new is introduced for that case; it is the same rule already used for `U00`, applied at `U01` instead — no example exists yet because no such group has been needed, but the pattern is settled: a site segment appears only when the group is genuinely scoped to one city, and disappears rather than being faked when it isn't.
+
+This is the opposite of §2's server names, where the city segment is *never* omitted, `U00` included (§1): a VM always runs on real hardware somewhere, so it always carries a real city, whichever entity administratively owns it (`U00PARVMNDS01`). A group can legitimately have no single place to point to; a physical machine cannot.
+
+Where these groups live in the OU tree: a plain group in the `Groups` OU matching its own scope (city, country, or company-wide); an `ADM` group one level *above* the OU subtree it delegates rights over instead — see §3.
 
 ---
 
