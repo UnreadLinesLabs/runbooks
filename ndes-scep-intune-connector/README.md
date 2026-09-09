@@ -13,6 +13,16 @@ not do is expose that server to the internet: until `U00PARVMPNC01` and Entra Ap
 (§15), `U01PARVMNDS01` only has to be reachable from inside the lab network, and the Connector only
 needs a single outbound path to the Intune service.
 
+A **new**, dedicated server — rather than adding this template to an NDES role already running
+elsewhere — is not a stylistic choice either. A single NDES instance holds exactly one set of
+`EncryptionTemplate`/`GeneralPurposeTemplate`/`SignatureTemplate` registry values (§8): global to that
+server, not scoped per SCEP profile. Pointing an existing NDES server at `Intune SCEP Mobile User`
+would silently stop it from issuing whatever it already serves — a production example being a server
+already handling SCEP for Windows Autopilot device certificates. A second SCEP use case always needs
+its own NDES server — its own Windows Server, IIS, NDES role, and Certificate Connector instance —
+never a repoint of one already in service. This is otherwise the standard, Microsoft-documented
+procedure (§16); nothing about it is lab-specific beyond the server and template names.
+
 ## 1. Architecture
 
 ```text
@@ -174,6 +184,13 @@ It does **not** cover:
    Allow private key to be exported     : unchecked (confirm — do not enable)
    ```
 
+   Restricting `Purpose` to `Signature` changes what lands in the issued certificate's Key Usage
+   extension: `Digital Signature` alone, instead of the `Key Encipherment` + `Digital Signature` pairing
+   `Web Server` carries for a server that has to decrypt an RSA key exchange. A client authentication
+   certificate only ever signs a challenge to prove key possession during the handshake — it never
+   decrypts anything — so the same least-privilege reasoning as the EKU change in step 5 applies to the
+   key's own cryptographic capability, not just to the policy that names it.
+
 7. **Cryptography tab — confirm, don't just glance at it:**
 
    ```text
@@ -267,9 +284,14 @@ Set-ItemProperty -Path $path -Name "SignatureTemplate"      -Value "IntuneSCEPMo
 ```
 
 **Use the template name from §6's General tab, not its display name** — `IntuneSCEPMobileUser`, no
-spaces. All three values point at the same template here because `Intune SCEP Mobile User` was
-configured for `Signature` only (§6); a template split across separate encryption/signature purposes
-would need different values, which this one deliberately avoids.
+spaces. NDES always expects all three registry values populated, whether or not the underlying
+template actually differentiates purposes. All three point at the same template here because `Intune
+SCEP Mobile User` was configured for `Signature` only (§6); a template split across separate
+encryption/signature purposes would need different values, which this one deliberately avoids.
+
+These three values are also global to this NDES instance, not scoped to one SCEP profile — the reason
+this lab builds a brand-new server rather than repointing an existing NDES role (see the note under
+§1's introduction on `Architecture`).
 
 Restart IIS so the new mapping takes effect:
 
