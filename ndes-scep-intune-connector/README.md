@@ -333,14 +333,31 @@ application pool identity and the private-key permissions on the two RA certific
 Add the gMSA to the local `IIS_IUSRS` group, now that IIS exists on this host:
 
 ```powershell
-Add-LocalGroupMember -Group "IIS_IUSRS" -Member "CORP\gmsa-ndes$"
+Add-LocalGroupMember -Group "IIS_IUSRS" -Member "UNREADLINES\gmsa-ndes$"
+```
+
+**Use `UNREADLINES\`, not `CORP\`.** `corp.unreadlines.com` is only the AD forest/domain's DNS name —
+its NetBIOS name was set explicitly to `UNREADLINES` when the domain was created
+(`active-directory-domain-controller/README.md` §5/§13, `-DomainNetbiosName "UNREADLINES"`). The two
+names are independent; guessing the NetBIOS name from the DNS name's first label (`CORP`) doesn't hold
+here, and an earlier draft of this section did exactly that. With the right domain prefix,
+`Add-LocalGroupMember` resolves `gmsa-ndes$` normally — there is no gMSA-specific incompatibility with
+this cmdlet to work around, and no need to fall back to the GUI for this step. (If `gmsa-ndes$` was
+already added by hand through Server Manager's **Add User or Group** dialog — which resolves by
+searching the bare name, so it never hit the wrong-domain problem — this command reports it's already a
+member; that's expected, not a sign anything is broken.)
+
+Confirm membership took:
+
+```powershell
+net localgroup IIS_IUSRS
 ```
 
 Switch the application pool identity:
 
 ```text
 inetmgr → Application Pools → SCEP → Advanced Settings...
-    → Identity → Custom account → CORP\gmsa-ndes$, password fields left blank
+    → Identity → Custom account → UNREADLINES\gmsa-ndes$, password fields left blank
 ```
 
 The password fields greying out on their own, rather than rejecting a blank password, is what confirms
