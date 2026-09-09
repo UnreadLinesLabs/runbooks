@@ -201,7 +201,13 @@ It does **not** cover:
 
    The Read-only grant matters on its own: whoever builds the Intune SCEP profile in a later lab has to
    be able to browse to this template from the Intune admin center, and that lookup fails silently
-   without it.
+   without it. Skip this line if that person's account is already a member of `Domain Admins` or
+   `Enterprise Admins` — both inherit `Read`/`Write`/`Enroll` on every template by default, `Web Server`
+   included, so the grant above is only needed for an account outside those two groups. Removing
+   `Enroll` from `Domain Admins`/`Enterprise Admins` themselves is out of scope for this lab's security
+   requirements (`notes/wifi-mobile-certificate-chain.md` §5 only targets `gmsa-ndes$` and `Authenticated
+   Users`) and wouldn't add real protection anyway — `Write` already lets either group re-grant itself
+   `Enroll` at any time.
 
 9. Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
    **Certificate Template to Issue** → select `Intune SCEP Mobile User`.
