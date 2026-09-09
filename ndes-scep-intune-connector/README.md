@@ -120,7 +120,23 @@ It does **not** cover:
 
 1. `certtmpl.msc` → right-click the built-in `Web Server` template → **Duplicate Template**.
 
-2. **General tab:**
+2. **Compatibility tab — set this before touching any other tab, it changes what they offer.**
+
+   ```text
+   Certification Authority : Windows Server 2003
+   Certificate recipient    : Windows XP / Server 2003
+   ```
+
+   NDES only works with a certificate template built on a **Legacy Cryptographic Service Provider**
+   (CSP) — not the CNG-based Key Storage Provider (KSP) that newer templates default to. The duplication
+   wizard on a modern CA suggests a much newer Compatibility level by default (`Windows Server 2016` /
+   `Windows 10 - Windows Server 2016` is common) with a "Show resulting changes" checkbox — accepting
+   that default silently switches the Cryptography tab's Provider Category to Key Storage Provider,
+   which NDES cannot use. Dropping both settings back to `Windows Server 2003` / `Windows XP/Server
+   2003` — the same floor the built-in `Web Server` template itself already assumes — is what keeps
+   Legacy CSP selected; confirmed on the Cryptography tab in step 7 below.
+
+3. **General tab:**
 
    ```text
    Template display name : Intune SCEP Mobile User
@@ -130,14 +146,14 @@ It does **not** cover:
    Leave **Publish certificate in Active Directory** unchecked — it already is on `Web Server`, and a
    SCEP client certificate has no AD object of its own to publish against.
 
-3. **Subject Name tab — nothing to change.** `Web Server` already has Subject Name set to *Supply in
+4. **Subject Name tab — nothing to change.** `Web Server` already has Subject Name set to *Supply in
    the request*, which is exactly what the Intune policy module for NDES requires: it builds the subject
    and SAN (`CN={{UserPrincipalName}}`, SAN `UPN={{UserPrincipalName}}`) itself, from the SCEP profile
    that will be created in a later lab, not from anything stored in AD. This is the reason to duplicate
    `Web Server` rather than `User` — `User` would default to *Build from Active Directory information*
    and need this tab changed by hand.
 
-4. **Extensions tab — this needs to change.** `Web Server`'s built-in Application Policy is `Server
+5. **Extensions tab — this needs to change.** `Web Server`'s built-in Application Policy is `Server
    Authentication`, which is backwards for a client certificate:
 
    ```text
@@ -150,7 +166,7 @@ It does **not** cover:
    a certificate that could impersonate a server elsewhere in the domain, for a certificate whose only
    intended job is proving a mobile user's identity to NPS.
 
-5. **Request Handling tab — this needs to change too.** `Web Server` defaults to a purpose suited to TLS
+6. **Request Handling tab — this needs to change too.** `Web Server` defaults to a purpose suited to TLS
    key exchange, not to signing a client authentication handshake:
 
    ```text
@@ -158,11 +174,18 @@ It does **not** cover:
    Allow private key to be exported     : unchecked (confirm — do not enable)
    ```
 
-6. **Cryptography tab:** confirm the minimum key size is `2048` and the provider category supports
-   `Signature` alone — the default `Web Server` selection already does; there's nothing to pick here if
-   the wizard doesn't flag a conflict after the Request Handling change above.
+7. **Cryptography tab — confirm, don't just glance at it:**
 
-7. **Security tab — remove the broad default, grant the two accounts that actually need this template:**
+   ```text
+   Provider Category   : Legacy Cryptographic Service Provider
+   Minimum key size     : 2048
+   ```
+
+   This is the tab step 2's Compatibility setting was protecting. If Provider Category shows **Key
+   Storage Provider** instead, the Compatibility tab is still too high — go back to step 2 rather than
+   trying to force a legacy CSP under a KSP-level template, which the UI doesn't cleanly allow.
+
+8. **Security tab — remove the broad default, grant the two accounts that actually need this template:**
 
    ```text
    Authenticated Users
@@ -180,7 +203,7 @@ It does **not** cover:
    be able to browse to this template from the Intune admin center, and that lookup fails silently
    without it.
 
-8. Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
+9. Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
    **Certificate Template to Issue** → select `Intune SCEP Mobile User`.
 
 ## 7. Install the NDES role — on `U01PARVMNDS01`
