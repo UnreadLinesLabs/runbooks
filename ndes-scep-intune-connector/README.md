@@ -395,23 +395,74 @@ registry or CA problem.
 
 ## 11. Install and register the Intune Certificate Connector — on `U01PARVMNDS01`
 
-Download `IntuneCertificateConnector.exe` from the Intune admin center (**Tenant administration** →
-**Connectors and tokens** → **Certificate connectors** → **Add**), copy it to `U01PARVMNDS01`, and run
-it with an account that has local administrator rights on the server.
+1. **Before running the installer, disable Internet Explorer Enhanced Security Configuration (IE ESC)
+   for both Administrators and Users** — Server Manager → **Local Server** → **IE Enhanced Security
+   Configuration** → set both to **Off** → **OK**. The connector's Azure AD sign-in step (step 7 below)
+   opens through an embedded IE-based browser control; IE ESC's restrictions on active content and
+   scripting stop the modern sign-in page from rendering at all, not just from looking wrong. This has
+   nothing to do with browsing the internet from this server generally — it only affects that one
+   embedded sign-in step.
 
-During setup:
+2. Download `IntuneCertificateConnector.exe` from the Intune admin center (**Tenant administration** →
+   **Connectors and tokens** → **Certificate connectors** → **Add**), copy it to `U01PARVMNDS01`, and
+   run it with an account that has local administrator rights on the server.
 
-```text
-Service account : SYSTEM
-```
+3. **Features page.** The installer lets you pick which connector capabilities to enable — this page
+   isn't optional and its defaults don't match this lab:
 
-`SYSTEM` is Microsoft's default and keeps this lab consistent with the least-privilege pattern already
-applied to the NDES role itself — the Connector doesn't need a domain identity of its own when the
-underlying NDES service (`gmsa-ndes$`) already carries the CA permissions from §9.
+   ```text
+   SCEP                        : checked   ← this lab's entire purpose; not checked by default
+   PKCS                        : unchecked ← a different certificate-delivery flow, not built here
+   PKCS imported certificates  : unchecked ← depends on PKCS, same reason
+   Certificate revocation      : checked   ← matches the Issue and Manage Certificates grant, §9
+   ```
 
-Sign in with the Intune Administrator account from §5 when prompted, and confirm the connector is
-scoped to SCEP (certificate revocation support is enabled by default and should stay on, matching §9's
-grant).
+   Leaving `PKCS`/`PKCS imported certificates` checked would enable a connector capability this lab
+   never configures or scopes — unnecessary surface, not a free extra.
+
+4. **Service Account page:**
+
+   ```text
+   Select the service account type : SYSTEM account
+   ```
+
+   This is the pre-selected default. `SYSTEM` keeps this lab consistent with the least-privilege
+   pattern already applied to the NDES role itself — the Connector doesn't need a domain identity of
+   its own when the underlying NDES service (`gmsa-ndes$`) already carries the CA permissions from §9.
+
+5. **Proxy page:** leave `Proxy address` and `Proxy port` empty, and `Use proxy credentials` unchecked.
+   `U01PARVMNDS01` reaches the Intune service over a direct outbound HTTPS 443 path (§5) — nothing in
+   this lab's network sits a proxy in front of it.
+
+6. **Prerequisites page.** The connector needs several Windows Server features that installing the
+   NDES role (§7) does not bring in on its own — expect these to show as missing the first time:
+
+   ```text
+   ✗ Request Filtering
+   ✗ .NET Extensibility 4.7
+   ✗ ASP.NET 4.7
+   ✗ IIS 6 WMI Compatibility
+   ✗ HTTP Activation
+   ✓ IIS is version 7 or higher
+   ✓ ADCS Network Device Enrollment Service has been configured
+   ```
+
+   Install the five missing ones from an elevated PowerShell session — the installer wizard can stay
+   open while you do this:
+
+   ```powershell
+   Install-WindowsFeature -Name Web-Filtering, Web-Net-Ext45, Web-Asp-Net45, Web-WMI, `
+       NET-WCF-HTTP-Activation45 -IncludeManagementTools
+   ```
+
+   The feature names keep the historical `45` suffix regardless of the actual .NET/IIS version shown in
+   the wizard (`4.7` here) — that's not a version mismatch to chase. Click **Rerun Check** once the
+   command finishes; all five should turn green, alongside the two that were already green.
+
+7. **Azure AD Sign In page:** sign in with the Intune Administrator (or Global Administrator) account
+   from §5.
+
+8. Continue through **Configure** and **Finish** to complete the installation.
 
 ## 12. Verify the connector is healthy — in the Intune admin center
 
