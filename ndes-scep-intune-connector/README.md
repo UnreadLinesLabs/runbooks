@@ -107,6 +107,7 @@ It does **not** cover:
 | NDES / Connector server | `U01PARVMNDS01`, `192.168.20.147/25`, Subnet 2 |
 | NDES service account | `gmsa-ndes$` (gMSA, provisioned in `create-gmsa-account/README.md`) |
 | Enrolled on | `U01PARVMNDS01` (NDES role, IIS `SCEP` application pool) |
+| Certificate Connector display name | Not `U01PARVMNDS01` — Intune assigns its own default name at registration; rename it to something host-identifiable (see §12) |
 
 ## 5. Prerequisites
 
@@ -468,8 +469,24 @@ registry or CA problem.
 
 ```text
 Tenant administration → Connectors and tokens → Certificate connectors
-    → U01PARVMNDS01 : Active
+    → <ConnectorName> : Active
 ```
+
+**The entry does not appear under `U01PARVMNDS01`.** Registering the connector (§11 steps 7–8) creates it
+under an Intune-generated default name — in this build, `PFX_connector_<InstallTimestamp>` — regardless
+of which features were actually enabled on the Features page (§11 step 3). This is Intune's own naming
+default for a newly registered connector with no friendly name set, not a sign that a second, wrongly
+configured connector was created, or that PKCS/PFX got enabled instead of SCEP. Rename it to something
+that identifies the host (this lab used `SCEP_PFX_U01PARVMNDS01_connector_<InstallTimestamp>`) so it
+stays recognizable once more connectors exist in the tenant (`U00PARVMPNC01`, §15, registers its own).
+
+**Don't read the connector's enabled capabilities off this name or this list.** The only place that
+actually shows what's enabled is the connector's own local configuration on `U01PARVMNDS01` — the same
+**Features** page shown during install (§11 step 3), reachable again anytime from the "Certificate
+Connector for Microsoft Intune" app without reinstalling. Reopening it here confirmed `SCEP` checked,
+`PKCS` and `PKCS imported certificates` unchecked, `Certificate revocation` checked — matching §11 step 3
+exactly, and confirming the `PFX` in the default name is Intune's naming quirk, not evidence that
+PKCS/PFX enrollment is active.
 
 **Active** confirms the Connector has completed its first successful check-in over the outbound HTTPS
 path from §5's prerequisites — not that a certificate has been issued. Give it a few minutes and refresh
@@ -483,7 +500,8 @@ the page if it still shows the initial provisioning state.
   registry-mapped to `IntuneSCEPMobileUser` (§8), confirmed answering over HTTP (§10).
 - `gmsa-ndes$` holds **Issue and Manage Certificates** on `U01PARVMPKI02` (§9) and **Read** on both RA
   certificates' private keys (§10).
-- The Certificate Connector on `U01PARVMNDS01` shows **Active** in the Intune admin center.
+- The Certificate Connector shows **Active** in the Intune admin center, under whatever name it was
+  renamed to (§12) — not under `U01PARVMNDS01`.
 
 **What this does not yet prove:** no device, inside the lab network or outside it, has requested a
 certificate through this path. `U01PARVMNDS01` isn't reachable from outside the lab yet (§3), and no
