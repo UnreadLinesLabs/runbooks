@@ -20,7 +20,7 @@ BDX = Bordeaux
 
 **A server name carries two independent things: which entity administratively owns it, and which city it
 physically runs in.** The two don't have to agree. `U01PARVMPKI01` reads as "France's, hosted in Paris";
-`U00PARVMNDS01` reads as "the company's, hosted in Paris" — same real hardware in the same city, different
+`U00PARVMPNC01` reads as "the company's, hosted in Paris" — same real hardware in the same city, different
 entity because the *service* is scoped differently: a country's own infrastructure vs. something shared by
 the whole company regardless of country. A VM's city segment is never `U00` alone — every physical machine
 runs somewhere real, so the city segment always names a real city, whichever entity owns the VM. `U00` with
@@ -32,9 +32,16 @@ and cross-reference that names it has to be found and updated, and a renamed *fo
 published video URL (`context.md` §6). `U01PARVMPKI01`/`02` stay `U01PAR` even though the PKI they run is
 company-wide, precisely because `ad-cs-pki-deployment/README.md` already documents them under that name —
 the inconsistency is accepted and will be called out as "written before this convention existed" rather
-than silently hidden. A server with no runbook written yet (`U01PARVMNDS01`, `U01PARVMPNC01` — both still
-`Planned` in `vm-inventory.md`, backlog items 4-5) costs nothing to rename now and gets it right from the
-start: `U00PARVMNDS01`, `U00PARVMPNC01`.
+than silently hidden. `U00PARVMPNC01` (still `Planned` in `vm-inventory.md`, backlog item 5) had no runbook
+written yet at the time this section was drafted, so it cost nothing to rename to the company-wide entity
+code from the start.
+
+`U01PARVMNDS01` (backlog item 4) took the same path first — reserved as `U00PARVMNDS01` under this same
+reasoning on 2026-09-05 — and then reverted on 2026-09-09, once its runbook
+(`ndes-scep-intune-connector/README.md`) was already written and real infrastructure construction had
+begun: the server is `U01PARVMNDS01` again. Every reference to `U00PARVMNDS01` in that runbook,
+`vm-inventory.md`, `notes/wifi-mobile-certificate-chain.md`, `YouTube/backlog.md` and the repository index
+(`runbooks/README.md`) was corrected in the same pass as this note.
 
 ---
 
@@ -168,7 +175,7 @@ This pattern is for **on-premises Active Directory groups**, scoped by physical 
 
 **The site segment is omitted, not replaced by a placeholder, whenever a group has no single city to scope to.** `GG-U00-ADM-Global` already does this: `GG-<Entity>-<Purpose>`, no site, because `U00` by definition never has one. The same omission applies one level down, for a group scoped to all of France but not to one particular city — `GG-U01-ADM-<Purpose>`, not `GG-U01-<some invented city>-ADM-<Purpose>`. Nothing new is introduced for that case; it is the same rule already used for `U00`, applied at `U01` instead — no example exists yet because no such group has been needed, but the pattern is settled: a site segment appears only when the group is genuinely scoped to one city, and disappears rather than being faked when it isn't.
 
-This is the opposite of §2's server names, where the city segment is *never* omitted, `U00` included (§1): a VM always runs on real hardware somewhere, so it always carries a real city, whichever entity administratively owns it (`U00PARVMNDS01`). A group can legitimately have no single place to point to; a physical machine cannot.
+This is the opposite of §2's server names, where the city segment is *never* omitted, `U00` included (§1): a VM always runs on real hardware somewhere, so it always carries a real city, whichever entity administratively owns it (`U00PARVMPNC01`). A group can legitimately have no single place to point to; a physical machine cannot.
 
 Where these groups live in the OU tree: a plain group in the `Groups` OU matching its own scope (city, country, or company-wide); an `ADM` group one level *above* the OU subtree it delegates rights over instead — see §3.
 
