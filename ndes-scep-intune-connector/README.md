@@ -308,10 +308,20 @@ issue new certificates:
 certsrv.msc → right-click UnreadLines Issuing CA → Properties → Security tab
     → Add: gmsa-ndes$
     → Issue and Manage Certificates : Allow
+    → Request Certificates : Allow (already checked by default when adding a new principal here —
+      leave it, do not uncheck it)
 ```
 
-This is narrower than granting Domain Admin or CA Administrator — `gmsa-ndes$` still can't change the
-CA's own configuration, only manage the certificates it's responsible for issuing.
+**Leave `Request Certificates` checked — it is not optional.** It is what lets `gmsa-ndes$` submit a
+request to the CA at all; it is separate from the template-level `Enroll` right (§6, which says *which*
+template it can request) and from `Issue and Manage Certificates` (which governs managing certificates
+already issued, not submitting new ones). Once NDES runs as `gmsa-ndes$` (§10), this account is the one
+actually submitting the certificate request to the CA on the phone's behalf, using the RA certificates
+from §7 — without `Request Certificates` that submission is refused even with the other two rights in
+place.
+
+This overall grant is still narrower than Domain Admin or CA Administrator — `gmsa-ndes$` still can't
+change the CA's own configuration, only request and manage the certificates it's responsible for.
 
 ## 10. Switch the NDES application pool to the gMSA — on `U01PARVMNDS01`
 
