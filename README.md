@@ -40,6 +40,7 @@ other runbook places its servers in.
 
 - [Deploy Intune trusted certificate profiles for the UnreadLines CA hierarchy](intune-trusted-certificate-profiles/README.md) — publish Root and Issuing CA trust profiles for Windows, Android Enterprise (Corporate and BYOD) and iOS/iPadOS, each scoped to its own dynamic Entra ID group.
 - [Deploy the SCEP certificate template, NDES, and the Intune Certificate Connector](ndes-scep-intune-connector/README.md) — build `U01PARVMNDS01`, publish the `Intune SCEP Mobile User` template on `U01PARVMPKI02`, and install the Certificate Connector that lets Intune request certificates from it.
+- [Publish NDES through the Entra Private Network Connector and Application Proxy](entra-private-network-connector-app-proxy/README.md) — build `U00PARVMPNC01`, and expose the NDES SCEP endpoint to a real mobile device without opening an inbound port.
 
 ## Reference
 

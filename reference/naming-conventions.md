@@ -39,9 +39,12 @@ code from the start.
 `U01PARVMNDS01` (backlog item 4) took the same path first — reserved as `U00PARVMNDS01` under this same
 reasoning on 2026-09-05 — and then reverted on 2026-09-09, once its runbook
 (`ndes-scep-intune-connector/README.md`) was already written and real infrastructure construction had
-begun: the server is `U01PARVMNDS01` again. Every reference to `U00PARVMNDS01` in that runbook,
-`vm-inventory.md`, `notes/wifi-mobile-certificate-chain.md`, `YouTube/backlog.md` and the repository index
-(`runbooks/README.md`) was corrected in the same pass as this note.
+begun: the server is `U01PARVMNDS01` again. `vm-inventory.md`, `YouTube/backlog.md` and the repository
+index (`runbooks/README.md`) were corrected in that same pass; every remaining reference to
+`U00PARVMNDS01` — in that runbook itself, `notes/wifi-mobile-certificate-chain.md`,
+`notes/entra-private-network-connector-app-proxy.md` and `configure-kds-root-key-for-gmsa/README.md`
+— was missed at the time and corrected only on 2026-09-10, during a cleaning pass. Don't assume a
+"corrected" note here means every file was actually touched — verify.
 
 ---
 

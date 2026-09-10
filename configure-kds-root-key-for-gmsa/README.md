@@ -29,7 +29,7 @@ corp.unreadlines.com (single domain controller in this lab)
         │  every domain of the forest needs this object before any of them can answer a
         │  gMSA password request
         ▼
-  Any future host that installs a gMSA (e.g. U00PARVMNDS01 — create-gmsa-account/README.md)
+  Any future host that installs a gMSA (e.g. U01PARVMNDS01 — create-gmsa-account/README.md)
 ```
 
 ## 2. Scope and dependencies
