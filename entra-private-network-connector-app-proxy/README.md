@@ -142,13 +142,20 @@ address it:
 Rename-Computer -NewName "U00PARVMPNC01" -Restart
 ```
 
-After the restart, confirm the name and set a static IP on Subnet 2:
+After the restart, confirm the name and check the actual adapter name before addressing it — it isn't
+always `Ethernet0`, depending on how the template's NIC was named:
 
 ```powershell
 $env:COMPUTERNAME
+Get-NetAdapter
+```
 
-New-NetIPAddress -InterfaceAlias "Ethernet0" -IPAddress 192.168.20.148 -PrefixLength 25 -DefaultGateway 192.168.20.254
-Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses 192.168.20.41
+Set a static IP on Subnet 2, substituting the real adapter name from `Get-NetAdapter` above for
+`<AdapterName>`:
+
+```powershell
+New-NetIPAddress -InterfaceAlias "<AdapterName>" -IPAddress 192.168.20.148 -PrefixLength 25 -DefaultGateway 192.168.20.254
+Set-DnsClientServerAddress -InterfaceAlias "<AdapterName>" -ServerAddresses 192.168.20.41
 ```
 
 Leave the machine in its default workgroup — it is not domain-joined (§4).
@@ -159,22 +166,62 @@ Leave the machine in its default workgroup — it is not domain-joined (§4).
 outside the lab network could reach it. Publishing it through Application Proxy changes that: this
 template gives it its own certificate so the internal hop stays HTTPS too.
 
-Duplicate the built-in `Web Server` template — it already defaults to Server Authentication only and
-`Supply in the request` for its Subject Name, so there is nothing to change on either of those tabs; this
-is the opposite case from the SCEP template in `ndes-scep-intune-connector`, which had to swap `Web
-Server`'s Application Policy for Client Authentication:
+1. `certtmpl.msc` → right-click the built-in `Web Server` template → **Duplicate Template**.
 
-```text
-Template display name : NDES Server Authentication
-Template name          : NDESServerAuthentication
-```
+2. **Compatibility tab — leave the wizard's default.** Unlike the SCEP template in
+   `ndes-scep-intune-connector` (§6 there), which needs a Legacy CSP because NDES itself requires it,
+   this certificate only has to bind to IIS for a normal TLS handshake — the modern Key Storage Provider
+   the wizard defaults to works fine here. Nothing to change on this tab.
 
-**On the Security tab, replace whatever broad `Enroll` permission the duplicate inherited with `Read` +
-`Enroll` for `U01PARVMNDS01$` only** — this certificate identifies exactly one server; no other principal
-needs to request it.
+3. **General tab:**
 
-Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** → **Certificate
-Template to Issue** → select `NDES Server Authentication`.
+   ```text
+   Template display name : NDES Server Authentication
+   Template name          : NDESServerAuthentication
+   ```
+
+   Leave **Publish certificate in Active Directory** unchecked, same reasoning as `Web Server` itself:
+   an IIS server certificate has no AD object of its own to publish against.
+
+4. **Subject Name tab — nothing to change.** `Web Server` already defaults to *Supply in the request*,
+   which is what §8's IIS wizard needs: it lets that wizard set the Common Name to
+   `u01parvmnds01.corp.unreadlines.com` itself rather than pulling it from an AD computer object field.
+
+5. **Extensions tab — nothing to change.** `Web Server`'s built-in Application Policy is already `Server
+   Authentication` only — the correct EKU for a certificate that just has to prove `U01PARVMNDS01`'s own
+   identity to a browser or to Application Proxy. This is the opposite case from the SCEP template, which
+   had to swap this same built-in EKU out for Client Authentication.
+
+6. **Request Handling tab — nothing to change.** `Web Server`'s default (`Purpose: Encryption`, private
+   key not exportable) is exactly what a normal HTTPS binding needs for the TLS key exchange — the SCEP
+   template narrowed this to `Signature` only because a client-auth certificate never decrypts anything;
+   this one does, so the default stays.
+
+7. **Cryptography tab — confirm, don't just glance at it:**
+
+   ```text
+   Provider Category   : Key Storage Provider
+   Minimum key size     : 2048
+   ```
+
+   If this shows **Legacy Cryptographic Service Provider** instead, the Compatibility tab (step 2) was
+   changed by mistake — go back and confirm it's still at the wizard's own default.
+
+8. **Security tab — remove the broad default, grant only the account that needs it:**
+
+   ```text
+   Authenticated Users
+       Enroll     : Not granted   ← remove, do not leave inherited from Web Server
+
+   U01PARVMNDS01$ (the NDES server's own computer account)
+       Read       : Allow
+       Enroll     : Allow
+   ```
+
+   This certificate identifies exactly one server; no other computer account needs to request it.
+
+9. Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
+   **Certificate Template to Issue** → select `NDES Server Authentication`.
 
 ## 8. Enroll the certificate and bind it to IIS — on `U01PARVMNDS01`
 
@@ -246,7 +293,31 @@ anything published against it.
 Application Proxy always maps the whole internal URL to the whole external URL (§11) — restricting the
 externally reachable surface to the one path SCEP needs has to happen on the NDES server itself, in IIS.
 
-1. Install the **URL Rewrite** module if it isn't already present (§5).
+1. **Install the URL Rewrite module** — it is not part of the IIS role and `ndes-scep-intune-connector`
+   never installed it (§5). Download and install it silently:
+
+   ```powershell
+   Invoke-WebRequest -Uri "https://download.microsoft.com/download/1/2/8/128E2E22-C1B9-44A4-BE2A-5859ED1D4592/rewrite_amd64_en-US.msi" `
+       -OutFile "$env:TEMP\rewrite_amd64_en-US.msi"
+
+   Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\rewrite_amd64_en-US.msi`" /quiet /norestart" -Wait
+   ```
+
+   If that URL has moved, get the current one from
+   [iis.net/downloads/microsoft/url-rewrite](https://www.iis.net/downloads/microsoft/url-rewrite) — the
+   filename (`rewrite_amd64_en-US.msi`) should stay the same across revisions.
+
+   Confirm it installed and IIS picked it up (requires the `WebAdministration` module, already present
+   with the IIS role):
+
+   ```powershell
+   Import-Module WebAdministration
+   Get-WebGlobalModule -Name "RewriteModule"
+   ```
+
+   Expect one row back, not an empty result — an empty result means the MSI installed but IIS wasn't
+   restarted to pick it up; run `iisreset` and check again.
+
 2. In IIS Manager, open the site hosting NDES, then **URL Rewrite → Add Rule(s) → Blocking Rule**.
 3. Block every request whose path does **not** match the SCEP endpoint:
    - Pattern: `^certsrv/mscep/mscep\.dll`
@@ -316,6 +387,7 @@ built here.
 - [Microsoft Entra private network connectors — Microsoft Learn](https://learn.microsoft.com/en-us/entra/global-secure-access/concept-connectors)
 - [Add an on-premises application for remote access through Application Proxy — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/application-proxy-add-on-premises-application)
 - [Create Blocking Rules for URL Rewrite Module — Microsoft Learn / IIS.net](https://learn.microsoft.com/en-us/iis/extensions/url-rewrite-module/creating-blocking-rules-for-url-rewrite-module)
+- [URL Rewrite Module 2.1 — download page, IIS.net](https://www.iis.net/downloads/microsoft/url-rewrite)
 
 ---
 
