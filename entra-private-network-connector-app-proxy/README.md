@@ -348,7 +348,9 @@ whatever breaks the PowerShell method.
 
 Confirm the SCEP endpoint now answers over HTTPS internally, from `U01PARVMNDS01` itself. **A bare request
 to `mscep.dll` with no SCEP operation is expected to return `403 Forbidden` — that's NDES's normal response
-to a request that isn't an actual SCEP operation, not a fault.** It still proves the DNS name resolves, the
+to a request that isn't an actual SCEP operation, not a fault** — Microsoft's own troubleshooting guide
+states this `403` explicitly means the SCEP URL is functioning correctly when called without SCEP
+parameters (§17). It still proves the DNS name resolves, the
 certificate is accepted, the HTTPS binding works, and IIS reaches the `mscep.dll` extension — everything
 this step is meant to confirm. To get a real `200`, ask for an actual SCEP operation instead:
 
@@ -361,9 +363,10 @@ Expect `200`.
 
 ## 9. Install and register the Private Network Connector — on `U00PARVMPNC01`
 
-1. In the Entra admin center, go to **Enterprise applications → Application Proxy** and select
+1. In the Entra admin center, go to **Enterprise applications → Private Network Connectors** and select
    **Download connector service** — this is the same installer Microsoft Learn documents for both
-   Application Proxy and Private Access (§3).
+   Application Proxy and Private Access (§3); the blade is named after the unified connector, not after
+   Application Proxy specifically, which is why it doesn't sit under an "Application Proxy" label.
 2. Copy the installer to `U00PARVMPNC01` and run it.
 3. When prompted, sign in with the Application Administrator account from §5. **Internet Explorer
    Enhanced Security Configuration can block this sign-in screen** — Microsoft's own documentation
@@ -375,8 +378,8 @@ Expect `200`.
 
 ## 10. Verify the connector is Active — in the Entra admin center
 
-In **Enterprise applications → Application Proxy → Connectors** (or **Global Secure Access → Connectors
-→ Private network connectors** — the same object surfaces in both blades, §3), confirm `U00PARVMPNC01`
+In **Enterprise applications → Private Network Connectors** (or **Global Secure Access → Connectors →
+Private network connectors** — the same object surfaces in both blades, §3), confirm `U00PARVMPNC01`
 shows **Active**. Do not continue to §11 until it does — a connector that isn't active yet cannot proxy
 anything published against it.
 
@@ -501,6 +504,7 @@ built here.
 - [Add an on-premises application for remote access through Application Proxy — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/application-proxy-add-on-premises-application)
 - [Create Blocking Rules for URL Rewrite Module — Microsoft Learn / IIS.net](https://learn.microsoft.com/en-us/iis/extensions/url-rewrite-module/creating-blocking-rules-for-url-rewrite-module)
 - [URL Rewrite Module 2.1 — download page, IIS.net](https://www.iis.net/downloads/microsoft/url-rewrite)
+- [Troubleshoot managed device to NDES communication in Microsoft Intune — Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/mem/intune/certificates/troubleshoot-scep-certificate-device-to-ndes) — source for §8/§13's `403` on a bare `mscep.dll` request being expected behavior.
 
 ---
 
