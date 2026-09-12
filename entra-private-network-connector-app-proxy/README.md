@@ -284,16 +284,26 @@ typed hostname:
    - Click the note → **Subject** tab:
      ```text
      Subject name
-     Type  : Common name
-     Value : u01parvmnds01.corp.unreadlines.com
+     Type  : Common name          Value : u01parvmnds01.corp.unreadlines.com
+     Type  : Country               Value : FR
+     Type  : State                 Value : Île-de-France
+     Type  : City                  Value : Paris
+     Type  : Organization          Value : UnreadLines
+     Type  : Organizational unit   Value : UnreadLines Labs
 
      Alternative name
      Type  : DNS
      Value : u01parvmnds01.corp.unreadlines.com
      ```
-     Add both, then **OK**. The SAN entry matters as much as the Common Name — most clients (and Chrome
-     specifically) validate the SAN, not the CN, so a certificate missing it will still bind in IIS but
-     fail TLS validation for anything checking the hostname properly.
+     Add each Subject name row one at a time (**Add** after each), then the Alternative name row, then
+     **OK**. The SAN entry matters as much as the Common Name — most clients (and Chrome specifically)
+     validate the SAN, not the CN, so a certificate missing it will still bind in IIS but fail TLS
+     validation for anything checking the hostname properly. Country/State/City/Organization/
+     Organizational unit are cosmetic here (nothing in this lab validates them), but filling them in
+     keeps the Subject line consistent and readable when this certificate turns up next to others in
+     the store — `Organization` is the fictional company (`UnreadLines`) itself; `Organizational unit`
+     is `UnreadLines Labs`, the project producing these runbooks, kept distinct from the company the same
+     way `reference/naming-conventions.md` §3 keeps that name out of the real AD `OU=` tree.
 5. **Enroll** → **Finish**.
 
 **If `NDES Server Authentication` does not appear in step 4's list at all**, check, in this order:
@@ -317,11 +327,21 @@ or **Edit** the `https`/`443` binding) rather than PowerShell's `AddSslCertifica
 frequently fails on this exact step with `A specified logon session does not exist (0x80070520)`, a known
 COM/CNG quirk unrelated to anything specific to this lab:
 
+Check first, and only create the binding if it isn't already there — IIS bindings are unique per
+protocol/IP/port across every site on the server, so running `New-WebBinding` against one that already
+exists (most likely from an earlier attempt at this same step) throws `Cannot add duplicate collection
+entry of type 'binding' ... 'https, *:443:'` instead of just no-opping:
+
 ```powershell
-New-WebBinding -Name "Default Web Site" -Protocol https -Port 443 -IPAddress "*"
+if (-not (Get-WebBinding -Name "Default Web Site" -Protocol https)) {
+    New-WebBinding -Name "Default Web Site" -Protocol https -Port 443 -IPAddress "*"
+}
 ```
 
-**In IIS Manager:** `Default Web Site` → **Bindings...** → select the `https`/`443` binding just created →
+Either way — whether this just created the binding or it already existed — move on to attaching the
+certificate.
+
+**In IIS Manager:** `Default Web Site` → **Bindings...** → select the `https`/`443` binding →
 **Edit...** → **SSL certificate**: choose `NDES Server Authentication` (the friendly name from above) →
 **OK**. This binds the certificate through the same in-process path IIS Manager always uses, sidestepping
 whatever breaks the PowerShell method.
