@@ -103,7 +103,7 @@ It does **not** cover:
 | Published server | `U01PARVMNDS01`, `192.168.20.147/25` (built in `ndes-scep-intune-connector`) |
 | Application Proxy application (display name) | `App Proxy - NDES SCEP - Mobile` — proposed here, following the `<Category> - <Subject> - <Qualifier>` Title Case pattern `naming-conventions.md` §9.2 already uses for Intune profiles; not yet formalized as its own subsection of §9, since this is the first Application Proxy app this project has published |
 | Internal URL | `https://u01parvmnds01.corp.unreadlines.com/` — the NDES root, per Microsoft's own published procedure (§11) |
-| External URL | Tenant default (`*.msappproxy.net`) — no custom domain configured for this project |
+| External URL | Tenant default (`*.msappproxy.net`) — no custom domain configured for this project; generated as `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net` (§11) |
 | Pre-authentication | Passthrough — the only mode SCEP's protocol allows; mandatory, not a choice made for this lab |
 | Externally reachable paths (after §12's IIS rule) | `/certsrv/mscep/mscep.dll` (and its `/pkiclient.exe` variant) plus `/CertificateRegistrationSvc/` — the latter kept open because the Intune Certificate Connector calls it on the same site; `/certsrv/mscep_admin` stays blocked |
 | NDES IIS certificate — duplicated from | built-in `Web Server` template |
@@ -437,7 +437,7 @@ anything published against it.
    **SSL Certificate**: shown as "No SSL certificate required" — informational only (the tenant default
    `*.msappproxy.net` domain manages its own certificate), nothing to configure here.
 7. Save, then copy the generated external URL — needed for §13 and for the Intune SCEP profile in the
-   next lab (§16).
+   next lab (§16). For this lab: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net` (§4).
 
 ## 12. Harden the published endpoint — on `U01PARVMNDS01`
 
@@ -519,6 +519,13 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
    rather than assuming it, and re-test actual certificate issuance (not just the URL checks in §13) after
    enabling this rule, since `CertificateRegistrationSvc` traffic won't show up in an outside-in test.
 
+   **This also means `U01PARVMNDS01` can no longer be casually repurposed for anything else that needs
+   IIS** — e.g. hosting a Windows Autopilot-related web service, or any other role that would share
+   `Default Web Site`. This rule would block it exactly the same way it would have blocked
+   `CertificateRegistrationSvc` if that path hadn't been added above. If a future lab adds another
+   IIS-hosted service to this server, revisit this rule first — either add that service's path to the
+   allow list here, or give it its own site/binding so this rule's scope doesn't have to grow indefinitely.
+
 ## 13. Test the published endpoint end to end
 
 **From a machine outside the lab network** (a real phone, or a laptop on a different network — testing
@@ -532,7 +539,7 @@ from inside the lab network proves nothing about the path this lab actually buil
    To actually prove the path through, request a real SCEP operation instead and expect **200**:
 
    ```powershell
-   $uri = "<external URL from §11>/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca"
+   $uri = "https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca"
    (Invoke-WebRequest -Uri $uri -UseBasicParsing).StatusCode
    ```
 3. Back in the Entra admin center, re-check §10 — the connector should still show **Active** after
