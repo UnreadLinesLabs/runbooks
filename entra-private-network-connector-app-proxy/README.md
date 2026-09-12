@@ -124,8 +124,9 @@ It does **not** cover:
   register the connector and publish the application — a narrower role than the Intune/Global
   Administrator used for the Certificate Connector in `ndes-scep-intune-connector`.
 - **The `unreadlines` tenant licensed for Microsoft Entra ID P1 or higher** — Application Proxy requires
-  it. Not yet confirmed for this tenant; verify under the Entra admin center's licensing blade before
-  starting, rather than assuming it is already in place.
+  it. Confirmed in place for this tenant by this lab's own completion (§9–§13 all worked); still worth
+  checking under the Entra admin center's licensing blade first on a tenant where this hasn't been
+  verified before, rather than assuming it.
 - Outbound HTTPS (443) from `U00PARVMPNC01` to Entra ID. No inbound port is opened on either
   `U00PARVMPNC01` or `U01PARVMNDS01` by this lab.
 - Administrative access on `U00PARVMPNC01` (§9), `U01PARVMPKI02` (§7), and `U01PARVMNDS01` (§8, §12).
@@ -214,8 +215,8 @@ template gives it its own certificate so the internal hop stays HTTPS too.
    an IIS server certificate has no AD object of its own to publish against.
 
 4. **Subject Name tab — nothing to change.** `Web Server` already defaults to *Supply in the request*,
-   which is what §8's IIS wizard needs: it lets that wizard set the Common Name to
-   `u01parvmnds01.corp.unreadlines.com` itself rather than pulling it from an AD computer object field.
+   which is what §8's enrollment needs: it lets the person enrolling set the Common Name (and SAN) to
+   `u01parvmnds01.corp.unreadlines.com` themselves, rather than pulling it from an AD computer object field.
 
 5. **Extensions tab — nothing to change.** `Web Server`'s built-in Application Policy is already `Server
    Authentication` only — the correct EKU for a certificate that just has to prove `U01PARVMNDS01`'s own
@@ -542,7 +543,7 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
    this rule (from an earlier, uncorrected pattern) still enabled and evaluated before this one — check
    the full rule list under **URL Rewrite** for duplicates, since only one corrected rule should exist.
 
-4. **This rule applies to every request IIS receives on this site**, including from inside the lab
+3. **This rule applies to every request IIS receives on this site**, including from inside the lab
    network — confirm nothing else on `U01PARVMNDS01` depends on another path on the same site/binding
    before enabling it. `ndes-scep-intune-connector/README.md` builds this server for SCEP and the
    Certificate Connector alone, so nothing else should be sharing the site — but verify on the live server
@@ -630,6 +631,7 @@ built here.
 - [Create Blocking Rules for URL Rewrite Module — Microsoft Learn / IIS.net](https://learn.microsoft.com/en-us/iis/extensions/url-rewrite-module/creating-blocking-rules-for-url-rewrite-module)
 - [URL Rewrite Module 2.1 — download page, IIS.net](https://www.iis.net/downloads/microsoft/url-rewrite)
 - [Troubleshoot managed device to NDES communication in Microsoft Intune — Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/mem/intune/certificates/troubleshoot-scep-certificate-device-to-ndes) — source for §8/§13's `403` on a bare `mscep.dll` request being expected behavior.
+- [CertificateRegistrationSvc verify request error — Microsoft Learn support article](https://github.com/MicrosoftDocs/SupportArticles-docs/blob/main/support/mem/intune/certificates/certificateregistrationsvc-verify-request-error.md) — confirms `CertificateRegistrationSvc` is hosted on the NDES server's own IIS site and called by the Certificate Connector; source for §12's `CertificateRegistrationSvc` allow-list entry.
 
 ---
 
