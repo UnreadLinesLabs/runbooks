@@ -483,47 +483,64 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
    restarted to pick it up; run `iisreset` and check again.
 
 2. In IIS Manager, open the site hosting NDES, then **URL Rewrite → Add Rule(s) → Blocking Rule**, which
-   opens the **Add Request Blocking Rule** dialog. Fill in exactly these five fields — the dialog defaults
-   to values that don't match what this rule needs, so don't just accept what's already filled in:
+   opens the **Add Request Blocking Rule** dialog. Fill in exactly these fields — the dialog defaults to
+   values that don't match what this rule needs, so don't just accept what's already filled in:
    - **Block access based on**: `URL Path` (already the default — leave it).
    - **Block request that**: change from the default `Matches the Pattern` to **`Does Not Match the
      Pattern`** — this rule allows a short list and blocks everything else, the opposite of the dialog's
      own default intent.
-   - **Pattern (URL Path)**: `^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$`
+   - **Pattern (URL Path)**:
+     ```text
+     ^(?:certsrv/mscep/mscep\.dll(?:/pkiclient\.exe)?|CertificateRegistrationSvc(?:/.*)?)$
+     ```
    - **Using**: change from the default **`Wildcards`** to **`Regular Expressions`** — this is the field
      most likely to get missed, since the dialog doesn't warn you: a regex pattern like the one above
      (anchors, `\.`, grouping, alternation) means nothing under `Wildcards` matching rules (which only
      understand `*` and `?`), so leaving this on `Wildcards` silently makes the rule match nothing
      correctly, not an error you'd notice until testing §13.
-   - **How to block**: `Send an HTTP 403 (Forbidden) Response` (already the default — leave it).
+   - **Ignore case**: enabled.
+   - **How to block**: `Custom Response`, status code `403` — this is what was actually verified working
+     live on this lab; `Abort Request` (which just resets the connection with no response body) is the
+     other common option and should work too, but isn't what was tested here.
 
    Equivalent rule in `web.config`:
 
    ```xml
    <rule name="Restrict external access to SCEP endpoint only" stopProcessing="true">
-     <match url="^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$" negate="true" />
-     <action type="AbortRequest" />
+     <match url="^(?:certsrv/mscep/mscep\.dll(?:/pkiclient\.exe)?|CertificateRegistrationSvc(?:/.*)?)$" negate="true" ignoreCase="true" />
+     <action type="CustomResponse" statusCode="403" statusReason="Forbidden" statusDescription="Forbidden" />
    </rule>
    ```
 
-   Three corrections against the first draft of this pattern, worth noting since they came from a real
-   review rather than the first live test:
+   A few things worth noting about this exact pattern, since it went through more than one correction
+   before it actually worked on the live server:
    - **Anchored at both ends** (`^...$`) — without the trailing `$`, anything starting with
      `certsrv/mscep/mscep.dll` would match, `mscep.dll-malicious` included, defeating the rule entirely.
    - **`/pkiclient.exe` variant included** — some SCEP clients (routers, VPN appliances following the
      original Cisco/Verisign SCEP CGI convention) request `.../mscep/mscep.dll/pkiclient.exe` rather than
      `mscep.dll` alone; NDES answers both, so the rule has to allow both too.
-   - **`CertificateRegistrationSvc/` added to the allow list.** This is a second, separate IIS-hosted
-     endpoint the Intune Certificate Connector calls to validate requests — and it lives on the *same*
-     site as `mscep.dll`. A rule scoped to `mscep.dll` alone doesn't just narrow what's reachable from the
-     internet: it blocks **every** request IIS receives on this site regardless of where it came from,
-     including the connector's own local calls to `CertificateRegistrationSvc` — so the original, narrower
-     pattern risked breaking certificate issuance entirely, not just tightening external exposure.
+   - **`CertificateRegistrationSvc` added to the allow list, with its own trailing path made optional**
+     (`(?:/.*)?` rather than a mandatory `/.*`) — this is a second, separate IIS-hosted endpoint the
+     Intune Certificate Connector calls to validate requests, on the *same* site as `mscep.dll`. A rule
+     scoped to `mscep.dll` alone doesn't just narrow what's reachable from the internet: it blocks
+     **every** request IIS receives on this site regardless of where it came from, including the
+     connector's own local calls to `CertificateRegistrationSvc` — so the original, narrower pattern
+     risked breaking certificate issuance entirely, not just tightening external exposure.
      `/certsrv/mscep_admin` — the NDES admin page that can reveal an enrollment challenge password — is
      deliberately **not** added to this list: this project's Intune Certificate Connector uses dynamic,
      per-request challenges (§`ndes-scep-intune-connector`), so `mscep_admin` isn't part of the working
      flow, and it's exactly the kind of path this hardening step exists to keep off the published URL in
      the first place.
+   - **Non-capturing groups (`(?:...)`) throughout, and `Ignore case` turned on.** Neither changes what
+     the rule matches in principle, but they match what was actually confirmed working live, so they're
+     what's documented here rather than a functionally-equivalent variant that wasn't tested.
+
+   If a request to a path this rule should allow through still comes back `403` with **`Module:
+   RewriteModule`** in IIS's detailed error page (rather than `IsapiModule`), the block is happening here,
+   in this rule, before the request ever reaches NDES — re-check the pattern and these settings rather
+   than looking at NDES or the Certificate Connector for the cause. One likely reason: an older copy of
+   this rule (from an earlier, uncorrected pattern) still enabled and evaluated before this one — check
+   the full rule list under **URL Rewrite** for duplicates, since only one corrected rule should exist.
 
 4. **This rule applies to every request IIS receives on this site**, including from inside the lab
    network — confirm nothing else on `U01PARVMNDS01` depends on another path on the same site/binding
