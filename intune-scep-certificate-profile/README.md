@@ -110,11 +110,11 @@ inventory" section.
 
 **Three profiles — created in §7-§9:**
 
-| Profile | Root Certificate (Intune field, §4) | Assigned group |
-| --- | --- | --- |
-| `SCEP Certificate - UnreadLines Mobile User - Android (Corp)` | `Trusted Certificate - UnreadLines Root CA - Android (Corp)` | `GG-U01-PAR-WiFi-Mobile` |
-| `SCEP Certificate - UnreadLines Mobile User - Android (BYOD)` | `Trusted Certificate - UnreadLines Root CA - Android (BYOD)` | `GG-U01-PAR-WiFi-Mobile` |
-| `SCEP Certificate - UnreadLines Mobile User - iOS/iPadOS` | `Trusted Certificate - UnreadLines Root CA - iOS/iPadOS` | `GG-U01-PAR-WiFi-Mobile` |
+| Profile | Description (Basics field) | Root Certificate (Intune field, §4) | Assigned group |
+| --- | --- | --- | --- |
+| `SCEP Certificate - UnreadLines Mobile User - Android (Corp)` | Client authentication certificate for Android Enterprise Corporate devices, enrolled via UnreadLines-Mobile (EAP-TLS). | `Trusted Certificate - UnreadLines Root CA - Android (Corp)` | `GG-U01-PAR-WiFi-Mobile` |
+| `SCEP Certificate - UnreadLines Mobile User - Android (BYOD)` | Client authentication certificate for Android Enterprise Personal (BYOD) devices, enrolled via UnreadLines-Mobile (EAP-TLS). | `Trusted Certificate - UnreadLines Root CA - Android (BYOD)` | `GG-U01-PAR-WiFi-Mobile` |
+| `SCEP Certificate - UnreadLines Mobile User - iOS/iPadOS` | Client authentication certificate for iOS/iPadOS devices, enrolled via UnreadLines-Mobile (EAP-TLS). | `Trusted Certificate - UnreadLines Root CA - iOS/iPadOS` | `GG-U01-PAR-WiFi-Mobile` |
 
 The **Root Certificate** field always references the top-level Trusted Root profile, never the Issuing
 CA's — the field validates the chain from the root down, and Intune resolves the intermediate separately
@@ -204,9 +204,31 @@ synced, on-premises-sourced group. If it doesn't appear after a delta cycle, run
 Platform **Android Enterprise**, profile type **Corporate-owned, fully managed** → **Templates** → **SCEP
 certificate**.
 
-- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - Android (Corp)`.
-- **Configuration settings**: every field from §3's target configuration table, **Root Certificate** set
-  to `Trusted Certificate - UnreadLines Root CA - Android (Corp)`.
+- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - Android (Corp)`, description
+  "Client authentication certificate for Android Enterprise Corporate devices, enrolled via
+  UnreadLines-Mobile (EAP-TLS)."
+- **Configuration settings** — field by field, values from §3's target configuration table:
+  - **Certificate type**: `User` (the tab opens on this already).
+  - **Subject name format**: the field pre-fills `CN={{UserName}},E={{EmailAddress}}` — clear it and
+    type `CN={{UserPrincipalName}}`.
+  - **Subject alternative name**: two rows, added with the **Attribute** dropdown on the left and typed
+    into **Value** on the right —
+    - Attribute `User principal name (UPN)`, Value `{{UserPrincipalName}}`.
+    - Attribute `Uniform Resource Identifier (URI)`, Value `{{OnPremisesSecurityIdentifier}}` — type only
+      the variable; Intune wraps it into the `tag:microsoft.com,2022-09-14:sid:<value>` form itself when
+      it issues the certificate (§10 is where that wrapped form is checked, on the issued cert).
+  - **Certificate validity period**: `Years` / `1` — matches the field's own default, nothing to change.
+  - **Key usage**: open the dropdown (shows "0 selected") and check **Digital signature** only — leave
+    **Key encipherment** unchecked.
+  - **Key size (bits)**: `2048`.
+  - **Hash algorithm**: open the dropdown (shows "0 selected") and check **SHA-256** only.
+  - **Root Certificate**: click **+ Root Certificate**, search and select
+    `Trusted Certificate - UnreadLines Root CA - Android (Corp)`.
+  - **Extended key usage**: add a row and pick **Client Authentication** from the **Predefined values**
+    dropdown — it fills in **Name** and **Object Identifier** (`1.3.6.1.5.5.7.3.2`) on its own; don't
+    add any other row.
+  - **Renewal threshold (%)**: `20` — matches the field's own default, nothing to change.
+  - **SCEP Server URLs**: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll`.
 - **Assignments**: **Included groups** → `GG-U01-PAR-WiFi-Mobile`.
 - **Review + create**.
 
@@ -224,9 +246,24 @@ it follows from the certificate request simply failing to resolve a variable it 
 Platform **Android Enterprise**, profile type **Personally-owned devices with work profile** →
 **Templates** → **SCEP certificate**.
 
-- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - Android (BYOD)`.
-- **Configuration settings**: same values as §7, **Root Certificate** set to `Trusted Certificate -
-  UnreadLines Root CA - Android (BYOD)`.
+- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - Android (BYOD)`, description
+  "Client authentication certificate for Android Enterprise Personal (BYOD) devices, enrolled via
+  UnreadLines-Mobile (EAP-TLS)."
+- **Configuration settings** — same platform as §7 (Android Enterprise), so the same fields in the same
+  order; only **Root Certificate** changes:
+  - **Certificate type**: `User`.
+  - **Subject name format**: clear the pre-filled default and type `CN={{UserPrincipalName}}`.
+  - **Subject alternative name**: Attribute `User principal name (UPN)`, Value `{{UserPrincipalName}}` —
+    then Attribute `Uniform Resource Identifier (URI)`, Value `{{OnPremisesSecurityIdentifier}}`.
+  - **Certificate validity period**: `Years` / `1` (field default).
+  - **Key usage**: check **Digital signature** only.
+  - **Key size (bits)**: `2048`.
+  - **Hash algorithm**: check **SHA-256** only.
+  - **Root Certificate**: `+ Root Certificate` → `Trusted Certificate - UnreadLines Root CA - Android
+    (BYOD)`.
+  - **Extended key usage**: add a row, **Predefined values** → **Client Authentication**.
+  - **Renewal threshold (%)**: `20` (field default).
+  - **SCEP Server URLs**: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll`.
 - **Assignments**: **Included groups** → `GG-U01-PAR-WiFi-Mobile`.
 - **Review + create**.
 
@@ -236,9 +273,23 @@ Platform **Android Enterprise**, profile type **Personally-owned devices with wo
 
 Platform **iOS/iPadOS** → **Templates** → **SCEP certificate**.
 
-- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - iOS/iPadOS`.
-- **Configuration settings**: same values as §7, **Root Certificate** set to `Trusted Certificate -
-  UnreadLines Root CA - iOS/iPadOS`.
+- **Basics**: name it `SCEP Certificate - UnreadLines Mobile User - iOS/iPadOS`, description
+  "Client authentication certificate for iOS/iPadOS devices, enrolled via UnreadLines-Mobile (EAP-TLS)."
+- **Configuration settings** — same fields as §7 with two platform differences: **iOS/iPadOS has no
+  Hash algorithm field** (that setting only exists for Android and Windows profiles — nothing to set,
+  it isn't missing), and **Root Certificate** changes:
+  - **Certificate type**: `User`.
+  - **Subject name format**: clear the pre-filled default and type `CN={{UserPrincipalName}}`.
+  - **Subject alternative name**: Attribute `User principal name (UPN)`, Value `{{UserPrincipalName}}` —
+    then Attribute `Uniform Resource Identifier (URI)`, Value `{{OnPremisesSecurityIdentifier}}`.
+  - **Certificate validity period**: `Years` / `1` (field default).
+  - **Key usage**: check **Digital signature** only.
+  - **Key size (bits)**: `2048`.
+  - **Root Certificate**: `+ Root Certificate` → `Trusted Certificate - UnreadLines Root CA -
+    iOS/iPadOS`.
+  - **Extended key usage**: add a row, **Predefined values** → **Client Authentication**.
+  - **Renewal threshold (%)**: `20` (field default).
+  - **SCEP Server URLs**: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll`.
 - **Assignments**: **Included groups** → `GG-U01-PAR-WiFi-Mobile`.
 - **Review + create**.
 
