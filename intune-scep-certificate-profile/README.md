@@ -103,7 +103,7 @@ inventory" section.
 | Extended Key Usage | Client Authentication only |
 | Key usage | Digital Signature only — matches `IntuneSCEPMobileUser`'s `Signature`-only Request Handling (`ndes-scep-intune-connector/README.md` §6) |
 | Key size | 2048-bit RSA, non-exportable |
-| Hashing algorithm | SHA-256 |
+| Hashing algorithm | SHA-2 — on Android Enterprise the field is a simple SHA-1/SHA-2 choice, not broken out by bit length; iOS/iPadOS has no such field at all (§9). Microsoft's own behavior note: Android ignores SHA-1 and always uses SHA-2 regardless, so this only matters as documentation of intent |
 | Certificate validity period | `1 year` (lab choice) — Microsoft does not recommend a specific value; its own guidance is only that this field must not exceed the template's own validity (verify live on `U01PARVMPKI02`, §4) and should plan for at least 5 days |
 | Renewal threshold | 20% — Microsoft's own worked example in the SCEP profile documentation, no stronger recommendation given |
 | SCEP Server URLs | `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll` |
@@ -221,7 +221,9 @@ certificate**.
   - **Key usage**: open the dropdown (shows "0 selected") and check **Digital signature** only — leave
     **Key encipherment** unchecked.
   - **Key size (bits)**: `2048`.
-  - **Hash algorithm**: open the dropdown (shows "0 selected") and check **SHA-256** only.
+  - **Hash algorithm**: open the dropdown (shows "0 selected") — on Android Enterprise this is a plain
+    **SHA-1 / SHA-2** choice, not the SHA-256/384/512 breakdown some other platforms show. Check
+    **SHA-2** only.
   - **Root Certificate**: click **+ Root Certificate**, search and select
     `Trusted Certificate - UnreadLines Root CA - Android (Corp)`.
   - **Extended key usage**: add a row and pick **Client Authentication** from the **Predefined values**
@@ -229,6 +231,12 @@ certificate**.
     add any other row.
   - **Renewal threshold (%)**: `20` — matches the field's own default, nothing to change.
   - **SCEP Server URLs**: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll`.
+- **Apps** — Android Enterprise–only step, gone on iOS/iPadOS (§9): **Certificate access**, leave the
+  default **Require user approval for all apps**. This setting gates which *apps* get silent access to
+  the certificate through Android's KeyChain (the "specific apps" alternative needs a list of package
+  names); the eventual Wi-Fi profile (item 8, §11) is configured by Intune as device owner, not as a
+  third-party app, so it isn't expected to need this grant — not yet confirmed against a real EAP-TLS
+  connection, re-check here if that profile can't pick up the certificate silently once it exists.
 - **Assignments**: **Included groups** → `GG-U01-PAR-WiFi-Mobile`.
 - **Review + create**.
 
@@ -258,12 +266,16 @@ Platform **Android Enterprise**, profile type **Personally-owned devices with wo
   - **Certificate validity period**: `Years` / `1` (field default).
   - **Key usage**: check **Digital signature** only.
   - **Key size (bits)**: `2048`.
-  - **Hash algorithm**: check **SHA-256** only.
+  - **Hash algorithm**: same SHA-1/SHA-2 choice as §7 — check **SHA-2** only.
   - **Root Certificate**: `+ Root Certificate` → `Trusted Certificate - UnreadLines Root CA - Android
     (BYOD)`.
   - **Extended key usage**: add a row, **Predefined values** → **Client Authentication**.
   - **Renewal threshold (%)**: `20` (field default).
   - **SCEP Server URLs**: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll`.
+- **Apps** — unlike §7, this profile type is Profile Owner (BYOD work profile), not Device Owner, and
+  Microsoft's own documentation scopes the "Certificate access" setting to Fully Managed, Dedicated and
+  Corporate-Owned Work Profile only — expect this step to be skipped or empty here. If it does appear,
+  same choice as §7: leave the default, **Require user approval for all apps**.
 - **Assignments**: **Included groups** → `GG-U01-PAR-WiFi-Mobile`.
 - **Review + create**.
 
