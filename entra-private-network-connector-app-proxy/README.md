@@ -394,12 +394,19 @@ anything published against it.
    — the NDES root, not a sub-path. Microsoft's own procedure for this exact scenario publishes the
    root; this screen has no option to publish only a sub-path (the limitation the intro above already
    notes — §12 is where it's actually addressed).
-4. **External URL**: leave the tenant default (`*.msappproxy.net`) — no custom domain configured.
+4. **External URL**: leave the tenant default suffix as offered (`*.msappproxy.net` — shown as two parts,
+   a prefix box and a fixed suffix dropdown; accept whatever prefix the form proposes) — no custom domain
+   configured for this project. **Application segments**: leave empty — that's for publishing several
+   internal apps behind one wildcard app, not used here.
 5. **Pre Authentication**: change the dropdown from its default (**Microsoft Entra ID**) to
    **Passthrough** — it does not default to this, so it has to be picked explicitly. Passthrough is the
    only mode that actually works for this app: SCEP cannot complete an interactive sign-in step, so
    leaving the default in place would make the published endpoint unreachable by any real SCEP client.
-6. **Connector group**: default (`U00PARVMPNC01` is currently the only connector).
+6. **Connector group**: the default group `U00PARVMPNC01` registered into — the tenant may label it with
+   a region suffix (e.g. `Default - Europe`) rather than plain `Default`; either way, leave whatever the
+   dropdown already shows selected, since `U00PARVMPNC01` is currently the only connector in it.
+   **SSL Certificate**: shown as "No SSL certificate required" — informational only (the tenant default
+   `*.msappproxy.net` domain manages its own certificate), nothing to configure here.
 7. Save, then copy the generated external URL — needed for §13 and for the Intune SCEP profile in the
    next lab (§16).
 
