@@ -42,6 +42,7 @@ other runbook places its servers in.
 - [Deploy the SCEP certificate template, NDES, and the Intune Certificate Connector](ndes-scep-intune-connector/README.md) — build `U01PARVMNDS01`, publish the `Intune SCEP Mobile User` template on `U01PARVMPKI02`, and install the Certificate Connector that lets Intune request certificates from it.
 - [Publish NDES through the Entra Private Network Connector and Application Proxy](entra-private-network-connector-app-proxy/README.md) — build `U00PARVMPNC01`, and expose the NDES SCEP endpoint to a real mobile device without opening an inbound port.
 - [Deploy the Intune SCEP certificate profile for mobile client authentication](intune-scep-certificate-profile/README.md) — sync `GG-U01-PAR-WiFi-Mobile` to Entra ID and issue Android Enterprise and iOS/iPadOS devices a client certificate carrying both the UPN and the on-premises SID, ready for the domain controller to verify a strong certificate mapping.
+- [Deploy the Intune Wi-Fi EAP-TLS profile for UnreadLines-Mobile](intune-wifi-eap-tls-profile/README.md) — tell managed Android Enterprise and iOS/iPadOS devices which SSID to join and which certificate and trusted server to use, composing the certificates issued by the two runbooks above.
 
 ## Reference
 
