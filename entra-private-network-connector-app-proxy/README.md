@@ -439,6 +439,19 @@ anything published against it.
 7. Save, then copy the generated external URL — needed for §13 and for the Intune SCEP profile in the
    next lab (§16). For this lab: `https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net` (§4).
 
+8. **Grant admin consent — do not skip this, the app doesn't work without it.** Since **30 June 2026**,
+   Microsoft Entra no longer auto-grants the `User.Read` delegated permission when a new Application
+   Proxy application is created; it has to be granted by hand afterward, every time, for every new app.
+   Skipping it doesn't fail loudly at creation time — the app saves and looks fine — but every request
+   through the published URL then comes back `403 - Forbidden: Access is denied. You do not have
+   permission to view this directory or page using the credentials that you supplied.`, which looks like
+   a backend/NDES problem (and is easy to mistake for one) but is actually this missing consent, unrelated
+   to Passthrough, IIS, or anything on `U01PARVMNDS01` at all:
+   - On the app's own page: **Permissions** → **Grant admin consent for `unreadlines`** → **Accept**.
+   - Confirm `User.Read` now shows under **Admin consent**, Type `Delegated`, Granted through
+     `Admin consent` — that confirmation is the actual proof this step took, not just clicking Accept.
+   - The **Application Administrator** account from §5 is enough for this — no need for a broader role.
+
 ## 12. Harden the published endpoint — on `U01PARVMNDS01`
 
 Application Proxy always maps the whole internal URL to the whole external URL (§11) — restricting the
@@ -528,8 +541,11 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
 
 ## 13. Test the published endpoint end to end
 
-**From a machine outside the lab network** (a real phone, or a laptop on a different network — testing
-from inside the lab network proves nothing about the path this lab actually builds):
+**From a machine outside the lab network** — a phone with Wi-Fi turned off, on cellular data only (the
+simplest option, no extra hardware needed), or a laptop connected through that phone's hotspot, or on any
+other network with no route to `192.168.20.0/25`. Testing from inside the lab network proves nothing
+about the path this lab actually builds, since the request would never actually go through the connector
+tunnel at all.
 
 1. Browse to the external URL from §11's root (no path). Expect **403 Forbidden** — proof that §12's rule
    is in effect, not just that the app is reachable.
@@ -537,6 +553,17 @@ from inside the lab network proves nothing about the path this lab actually buil
    too — this is NDES's own normal response to a request that isn't an actual SCEP operation (§8), so on
    its own it does **not** distinguish "reachable, working endpoint" from "still blocked by §12's rule".
    To actually prove the path through, request a real SCEP operation instead and expect **200**:
+
+   ```
+   https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca
+   ```
+
+   **This one you can just paste into any phone's browser — no PowerShell or laptop needed.** A working
+   `GetCACaps` request doesn't just return status `200`; NDES answers with a short plain-text list of
+   capability strings (`Renewal`, `SHA-1`, `POSTPKIOperation`, and similar) rendered right there in the
+   page. A blocked request shows IIS's `403` error page instead — the two are visually obvious apart, so
+   there's nothing to run to tell them apart. If you do want the PowerShell version (useful if you're
+   already on a tethered laptop, or want the bare status code for a screenshot), it's the same URL:
 
    ```powershell
    $uri = "https://AppProxyNDESSCEPMobile-unreadlines.msappproxy.net/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca"
@@ -582,7 +609,7 @@ built here.
 - [Use Microsoft Entra application proxy with a Network Device Enrollment Service (NDES) server — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/app-proxy-protect-ndes)
 - [Understand Microsoft Entra application proxy connectors — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/application-proxy-conceptual-connectors)
 - [Microsoft Entra private network connectors — Microsoft Learn](https://learn.microsoft.com/en-us/entra/global-secure-access/concept-connectors)
-- [Add an on-premises application for remote access through Application Proxy — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/application-proxy-add-on-premises-application)
+- [Add an on-premises application for remote access through Application Proxy — Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity/app-proxy/application-proxy-add-on-premises-application) — also the source for §11 step 8's admin consent requirement, in effect since 30 June 2026.
 - [Create Blocking Rules for URL Rewrite Module — Microsoft Learn / IIS.net](https://learn.microsoft.com/en-us/iis/extensions/url-rewrite-module/creating-blocking-rules-for-url-rewrite-module)
 - [URL Rewrite Module 2.1 — download page, IIS.net](https://www.iis.net/downloads/microsoft/url-rewrite)
 - [Troubleshoot managed device to NDES communication in Microsoft Intune — Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/mem/intune/certificates/troubleshoot-scep-certificate-device-to-ndes) — source for §8/§13's `403` on a bare `mscep.dll` request being expected behavior.
