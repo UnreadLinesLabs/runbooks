@@ -469,12 +469,20 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
    Expect one row back, not an empty result — an empty result means the MSI installed but IIS wasn't
    restarted to pick it up; run `iisreset` and check again.
 
-2. In IIS Manager, open the site hosting NDES, then **URL Rewrite → Add Rule(s) → Blocking Rule**.
-3. Block every request whose path does **not** match one of the two paths this server actually needs to
-   keep answering:
-   - Pattern: `^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$`
-   - Requested URL: **Does Not Match the Pattern**
-   - Action: **Abort Request** (or **Custom Response**, status `403`)
+2. In IIS Manager, open the site hosting NDES, then **URL Rewrite → Add Rule(s) → Blocking Rule**, which
+   opens the **Add Request Blocking Rule** dialog. Fill in exactly these five fields — the dialog defaults
+   to values that don't match what this rule needs, so don't just accept what's already filled in:
+   - **Block access based on**: `URL Path` (already the default — leave it).
+   - **Block request that**: change from the default `Matches the Pattern` to **`Does Not Match the
+     Pattern`** — this rule allows a short list and blocks everything else, the opposite of the dialog's
+     own default intent.
+   - **Pattern (URL Path)**: `^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$`
+   - **Using**: change from the default **`Wildcards`** to **`Regular Expressions`** — this is the field
+     most likely to get missed, since the dialog doesn't warn you: a regex pattern like the one above
+     (anchors, `\.`, grouping, alternation) means nothing under `Wildcards` matching rules (which only
+     understand `*` and `?`), so leaving this on `Wildcards` silently makes the rule match nothing
+     correctly, not an error you'd notice until testing §13.
+   - **How to block**: `Send an HTTP 403 (Forbidden) Response` (already the default — leave it).
 
    Equivalent rule in `web.config`:
 
