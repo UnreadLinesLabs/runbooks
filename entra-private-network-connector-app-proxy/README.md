@@ -346,12 +346,18 @@ certificate.
 **OK**. This binds the certificate through the same in-process path IIS Manager always uses, sidestepping
 whatever breaks the PowerShell method.
 
-Confirm the SCEP endpoint now answers over HTTPS internally, from `U01PARVMNDS01` itself:
+Confirm the SCEP endpoint now answers over HTTPS internally, from `U01PARVMNDS01` itself. **A bare request
+to `mscep.dll` with no SCEP operation is expected to return `403 Forbidden` — that's NDES's normal response
+to a request that isn't an actual SCEP operation, not a fault.** It still proves the DNS name resolves, the
+certificate is accepted, the HTTPS binding works, and IIS reaches the `mscep.dll` extension — everything
+this step is meant to confirm. To get a real `200`, ask for an actual SCEP operation instead:
 
 ```powershell
-Invoke-WebRequest https://u01parvmnds01.corp.unreadlines.com/certsrv/mscep/mscep.dll -UseBasicParsing |
-    Select-Object StatusCode
+$uri = "https://u01parvmnds01.corp.unreadlines.com/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca"
+(Invoke-WebRequest -Uri $uri -UseBasicParsing).StatusCode
 ```
+
+Expect `200`.
 
 ## 9. Install and register the Private Network Connector — on `U00PARVMPNC01`
 
@@ -446,9 +452,15 @@ from inside the lab network proves nothing about the path this lab actually buil
 
 1. Browse to the external URL from §11's root (no path). Expect **403 Forbidden** — proof that §12's rule
    is in effect, not just that the app is reachable.
-2. Browse to the external URL with `/certsrv/mscep/mscep.dll` appended. Expect the NDES SCEP status page
-   (HTTP 200) — the same validation step Microsoft's own procedure uses, here also confirming §12 didn't
-   block the one path it's supposed to allow.
+2. Append `/certsrv/mscep/mscep.dll` with no query string and browse to that. Expect **403 Forbidden** here
+   too — this is NDES's own normal response to a request that isn't an actual SCEP operation (§8), so on
+   its own it does **not** distinguish "reachable, working endpoint" from "still blocked by §12's rule".
+   To actually prove the path through, request a real SCEP operation instead and expect **200**:
+
+   ```powershell
+   $uri = "<external URL from §11>/certsrv/mscep/mscep.dll?operation=GetCACaps&message=ca"
+   (Invoke-WebRequest -Uri $uri -UseBasicParsing).StatusCode
+   ```
 3. Back in the Entra admin center, re-check §10 — the connector should still show **Active** after
    handling a real external request.
 
