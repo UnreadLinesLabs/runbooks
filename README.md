@@ -22,6 +22,7 @@ other runbook places its servers in.
 - [Build an OpenWrt network lab with a WireGuard site-to-site tunnel](openwrt-wireguard-site-to-site/README.md) — run an OpenWrt router on each of two physical PCs under VMware Workstation Pro, and join their `/25` LAN subnets over WireGuard.
 - [Deploy a Linux `hostapd` Wi-Fi access point](hostapd-wifi-access-point/README.md) — build `U01PARVMRAP01`, bridge its radio onto a dedicated VMware network, and hand the SSID its own DHCP scope and firewall zone on `FWL02`.
 - [Add a wired interconnect between the two lab routers](openwrt-wired-site-to-site/README.md) — measure a real packet-loss problem on the Wi-Fi-bridged WireGuard tunnel, then add a switchable, wired alternative path between the two LAB subnets.
+- [Activate the `UnreadLines-Mobile` SSID on `U01PARVMRAP01`](activate-wifi-mobile-ssid/README.md) — add a dedicated `VMnet4` network with its own firewall zone and DHCP scope, and switch `hostapd` from `UnreadLines-Guest` to WPA2-Enterprise 802.1X EAP-TLS, the last piece connecting the certificate and RADIUS chain to a real handshake.
 
 ### Identity and PKI
 
