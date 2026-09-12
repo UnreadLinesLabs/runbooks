@@ -38,9 +38,10 @@ U00PARVMPNC01   Entra Private Network Connector           192.168.20.148
       |  (no inbound port opened on U00PARVMPNC01 or U01PARVMNDS01)
       v
 U01PARVMNDS01   NDES (IIS) + Intune Certificate Connector  192.168.20.147
-      |  IIS rule (§12) narrows the externally reachable path to
-      |  /certsrv/mscep/mscep.dll — everything else on this site
-      |  answers 403 when reached through the published URL
+      |  IIS rule (§12) narrows the externally reachable paths to
+      |  /certsrv/mscep/mscep.dll (+ /pkiclient.exe variant) and
+      |  /CertificateRegistrationSvc/ — everything else on this
+      |  site, including /certsrv/mscep_admin, answers 403
       v
 U01PARVMPKI02   Issuing CA — signs, per ndes-scep-intune-connector
 
@@ -104,7 +105,7 @@ It does **not** cover:
 | Internal URL | `https://u01parvmnds01.corp.unreadlines.com/` — the NDES root, per Microsoft's own published procedure (§11) |
 | External URL | Tenant default (`*.msappproxy.net`) — no custom domain configured for this project |
 | Pre-authentication | Passthrough — the only mode SCEP's protocol allows; mandatory, not a choice made for this lab |
-| Externally reachable path (after §12's IIS rule) | `/certsrv/mscep/mscep.dll` only |
+| Externally reachable paths (after §12's IIS rule) | `/certsrv/mscep/mscep.dll` (and its `/pkiclient.exe` variant) plus `/CertificateRegistrationSvc/` — the latter kept open because the Intune Certificate Connector calls it on the same site; `/certsrv/mscep_admin` stays blocked |
 | NDES IIS certificate — duplicated from | built-in `Web Server` template |
 | NDES IIS certificate — template display name | `NDES Server Authentication` |
 | NDES IIS certificate — template name (internal) | `NDESServerAuthentication` |
@@ -130,6 +131,11 @@ It does **not** cover:
 - Administrative access on `U00PARVMPNC01` (§9), `U01PARVMPKI02` (§7), and `U01PARVMNDS01` (§8, §12).
 - IIS's **URL Rewrite** module available on `U01PARVMNDS01` for §12 — not installed by
   `ndes-scep-intune-connector`, since NDES itself doesn't need it.
+- `UnreadLinesRootCA.crt` and `UnreadLinesIssuingCA.crt` already copied onto `U00PARVMPNC01` at
+  `C:\UnreadLines\` — the project's standard Level 2 staging location for exactly this kind of manual
+  transfer (`ad-cs-pki-deployment/README.md` §2). Needed in §6 to install the `UnreadLines Root CA` and
+  `UnreadLines Issuing CA` trust that a domain-joined machine would otherwise get automatically, since
+  this one isn't.
 
 ## 6. Build `U00PARVMPNC01`
 
@@ -159,6 +165,29 @@ Set-DnsClientServerAddress -InterfaceAlias "<AdapterName>" -ServerAddresses 192.
 ```
 
 Leave the machine in its default workgroup — it is not domain-joined (§4).
+
+**Install the corporate CA trust by hand.** A domain-joined machine gets `UnreadLines Root CA` and
+`UnreadLines Issuing CA` in its trust stores automatically, via Group Policy — `U00PARVMPNC01` never
+will, since it deliberately isn't domain-joined (§4). Without this, the connector has no way to trust
+`U01PARVMNDS01`'s certificate (issued by `UnreadLines Issuing CA`, §7–§8) when it forwards published
+requests to it, and the app would fail with a backend TLS trust error despite everything else in this lab
+being configured correctly. Both certificates are already staged at `C:\UnreadLines\` on this machine
+(§5) — the project's standard Level 2 staging location for a manual transfer like this one
+(`ad-cs-pki-deployment/README.md` §2) — so install them straight from there, no download needed. No
+format conversion either, unlike the DER requirement Intune's profiles have
+(`intune-trusted-certificate-profiles/README.md` §5):
+
+```powershell
+Import-Certificate -FilePath "C:\UnreadLines\UnreadLinesRootCA.crt" -CertStoreLocation Cert:\LocalMachine\Root
+Import-Certificate -FilePath "C:\UnreadLines\UnreadLinesIssuingCA.crt" -CertStoreLocation Cert:\LocalMachine\CA
+```
+
+Confirm both landed in the right store before moving on:
+
+```powershell
+Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -like "*UnreadLines Root CA*"
+Get-ChildItem Cert:\LocalMachine\CA   | Where-Object Subject -like "*UnreadLines Issuing CA*"
+```
 
 ## 7. Publish the NDES server authentication template — on `U01PARVMPKI02`
 
@@ -441,8 +470,9 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
    restarted to pick it up; run `iisreset` and check again.
 
 2. In IIS Manager, open the site hosting NDES, then **URL Rewrite → Add Rule(s) → Blocking Rule**.
-3. Block every request whose path does **not** match the SCEP endpoint:
-   - Pattern: `^certsrv/mscep/mscep\.dll`
+3. Block every request whose path does **not** match one of the two paths this server actually needs to
+   keep answering:
+   - Pattern: `^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$`
    - Requested URL: **Does Not Match the Pattern**
    - Action: **Abort Request** (or **Custom Response**, status `403`)
 
@@ -450,15 +480,36 @@ externally reachable surface to the one path SCEP needs has to happen on the NDE
 
    ```xml
    <rule name="Restrict external access to SCEP endpoint only" stopProcessing="true">
-     <match url="^certsrv/mscep/mscep\.dll" negate="true" />
+     <match url="^(certsrv/mscep/mscep\.dll(/pkiclient\.exe)?|CertificateRegistrationSvc/.*)$" negate="true" />
      <action type="AbortRequest" />
    </rule>
    ```
 
+   Three corrections against the first draft of this pattern, worth noting since they came from a real
+   review rather than the first live test:
+   - **Anchored at both ends** (`^...$`) — without the trailing `$`, anything starting with
+     `certsrv/mscep/mscep.dll` would match, `mscep.dll-malicious` included, defeating the rule entirely.
+   - **`/pkiclient.exe` variant included** — some SCEP clients (routers, VPN appliances following the
+     original Cisco/Verisign SCEP CGI convention) request `.../mscep/mscep.dll/pkiclient.exe` rather than
+     `mscep.dll` alone; NDES answers both, so the rule has to allow both too.
+   - **`CertificateRegistrationSvc/` added to the allow list.** This is a second, separate IIS-hosted
+     endpoint the Intune Certificate Connector calls to validate requests — and it lives on the *same*
+     site as `mscep.dll`. A rule scoped to `mscep.dll` alone doesn't just narrow what's reachable from the
+     internet: it blocks **every** request IIS receives on this site regardless of where it came from,
+     including the connector's own local calls to `CertificateRegistrationSvc` — so the original, narrower
+     pattern risked breaking certificate issuance entirely, not just tightening external exposure.
+     `/certsrv/mscep_admin` — the NDES admin page that can reveal an enrollment challenge password — is
+     deliberately **not** added to this list: this project's Intune Certificate Connector uses dynamic,
+     per-request challenges (§`ndes-scep-intune-connector`), so `mscep_admin` isn't part of the working
+     flow, and it's exactly the kind of path this hardening step exists to keep off the published URL in
+     the first place.
+
 4. **This rule applies to every request IIS receives on this site**, including from inside the lab
    network — confirm nothing else on `U01PARVMNDS01` depends on another path on the same site/binding
-   before enabling it. `ndes-scep-intune-connector/README.md` builds this server for SCEP alone, so
-   nothing else should be sharing the site — but verify on the live server rather than assuming it.
+   before enabling it. `ndes-scep-intune-connector/README.md` builds this server for SCEP and the
+   Certificate Connector alone, so nothing else should be sharing the site — but verify on the live server
+   rather than assuming it, and re-test actual certificate issuance (not just the URL checks in §13) after
+   enabling this rule, since `CertificateRegistrationSvc` traffic won't show up in an outside-in test.
 
 ## 13. Test the published endpoint end to end
 
@@ -481,13 +532,16 @@ from inside the lab network proves nothing about the path this lab actually buil
 
 ## 14. Expected final state
 
-- `U00PARVMPNC01` runs the Entra Private Network Connector, shown **Active** in the Entra admin center.
+- `U00PARVMPNC01` runs the Entra Private Network Connector, shown **Active** in the Entra admin center,
+  and trusts `UnreadLines Root CA`/`UnreadLines Issuing CA` even though it isn't domain-joined (§6).
 - `U01PARVMNDS01` serves its SCEP endpoint over HTTPS internally, under its own `NDES Server
   Authentication` certificate (§7–§8).
 - `App Proxy - NDES SCEP - Mobile` is published, Passthrough preauthentication, internal URL pointed at
   `U01PARVMNDS01`'s root.
-- From outside the lab network, the published external URL returns **403** at its root and **200** at
-  `/certsrv/mscep/mscep.dll` only.
+- From outside the lab network, the published external URL returns **403** at its root, **403** on a bare
+  `/certsrv/mscep/mscep.dll` request (expected NDES behavior, §8), and **200** on a real SCEP operation
+  (`?operation=GetCACaps&message=ca`); `/certsrv/mscep_admin` also returns **403**, and
+  `CertificateRegistrationSvc` stays reachable for the Certificate Connector's own use.
 - No inbound port is open on `U00PARVMPNC01` or `U01PARVMNDS01` — the entire path from the internet to
   `U01PARVMNDS01` is the connector's outbound tunnel.
 
