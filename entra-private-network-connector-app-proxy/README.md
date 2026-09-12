@@ -228,24 +228,83 @@ template gives it its own certificate so the internal hop stays HTTPS too.
 9. Publish it: `certsrv.msc` → `UnreadLines Issuing CA` → **Certificate Templates** → **New** →
    **Certificate Template to Issue** → select `NDES Server Authentication`.
 
+10. **If enrollment fails with `The requested certificate template is not supported by this CA`
+    (`0x80094800`, `CERTSRV_E_UNSUPPORTED_CERT_TYPE`), check which enrollment method produced it before
+    assuming anything is wrong on the CA:**
+
+    - **From IIS Manager's Server Certificates → Create Domain Certificate wizard: this error is
+      expected, not a bug to chase.** That wizard does not let you pick a template at all — it always
+      requests the built-in `Web Server` template internally, regardless of what CA path or friendly
+      name you type in. `ad-cs-pki-deployment/README.md` never published `Web Server` as an issuable
+      template on `UnreadLines Issuing CA` (only a temporary `PKI Validation` template, since deleted),
+      so any request from this wizard is rejected outright — the same result whichever order the server
+      name and CA name are typed in. This is exactly why §8 uses `certlm.msc` instead: it's the only one
+      of the two that lets you explicitly select `NDES Server Authentication` rather than the hardcoded
+      `Web Server`.
+    - **From `certlm.msc` with `NDES Server Authentication` explicitly selected (§8):** this points at a
+      real gap on the CA. Confirm on `U01PARVMPKI02`:
+
+      ```powershell
+      certutil -CATemplates
+      ```
+
+      Look for `NDESServerAuthentication` (the internal name, §7 step 3) in the list. If it's
+      **missing**, step 9 above didn't actually take — repeat it. If it's **present** but enrollment
+      still fails, the CA service has not refreshed its cached template list yet (it polls Active
+      Directory periodically, not instantly, after a template is newly published); force the refresh:
+
+      ```powershell
+      Restart-Service CertSvc
+      ```
+
+      Then retry the enrollment on `U01PARVMNDS01` (§8).
+
 ## 8. Enroll the certificate and bind it to IIS — on `U01PARVMNDS01`
 
-IIS Manager's own **Server Certificates → Create Domain Certificate** wizard is unreliable for this step
-— in practice it can leave **Select** permanently greyed out on the Online Certification Authority screen,
-and typing the CA path manually there can fail with `No such host is known` even though the server
-resolves that same name fine everywhere else. Use the standard certificate MMC instead, which discovers
-the CA through Active Directory rather than a typed hostname:
+**Do not use IIS Manager's Server Certificates → Create Domain Certificate wizard for this step — it
+cannot request a custom template at all.** That wizard has no template picker; it always submits its
+request for the built-in `Web Server` template, no matter what CA path or friendly name is typed into it.
+`ad-cs-pki-deployment/README.md` never published `Web Server` as issuable on `UnreadLines Issuing CA`, so
+a request from this wizard is rejected with `The requested certificate template is not supported by this
+CA` (`0x80094800`) regardless — see §7 step 10. Use the Certificates MMC snap-in instead, which lets you
+pick `NDES Server Authentication` explicitly and discovers the CA through Active Directory rather than a
+typed hostname:
 
-1. `certlm.msc` (Certificates - Local Computer).
+1. `certlm.msc` opens it directly — or, if that command isn't available, `mmc.exe` → **File → Add/Remove
+   Snap-in…** → **Certificates** → **Computer account** → **Local computer** → **Finish**. Either way,
+   confirm the console is scoped to **Computer account**, not **My user account** — a certificate
+   requested under the wrong scope won't match the `U01PARVMNDS01$` Read/Enroll grant from §7 and won't
+   show the template at all.
 2. **Personal** → right-click → **All Tasks → Request New Certificate...**
 3. **Next** → **Next** (Active Directory Enrollment Policy).
 4. Check **NDES Server Authentication** in the list — it appears automatically because `U01PARVMNDS01$`
    has `Read` + `Enroll` on it (§7). A note reading *"More information is required to enroll for this
    certificate"* appears under it — this is expected, since the template's Subject Name is *Supply in the
    request* (§7):
-   - Click the note → **Subject** tab → **Type: Common name**, **Value**:
-     `u01parvmnds01.corp.unreadlines.com` → **Add** → **OK**.
+   - Click the note → **Subject** tab:
+     ```text
+     Subject name
+     Type  : Common name
+     Value : u01parvmnds01.corp.unreadlines.com
+
+     Alternative name
+     Type  : DNS
+     Value : u01parvmnds01.corp.unreadlines.com
+     ```
+     Add both, then **OK**. The SAN entry matters as much as the Common Name — most clients (and Chrome
+     specifically) validate the SAN, not the CN, so a certificate missing it will still bind in IIS but
+     fail TLS validation for anything checking the hostname properly.
 5. **Enroll** → **Finish**.
+
+**If `NDES Server Authentication` does not appear in step 4's list at all**, check, in this order:
+
+- It is actually published on `UnreadLines Issuing CA` — §7 step 9 (`certsrv.msc` → Certificate
+  Templates → New → Certificate Template to Issue), confirmed with `certutil -CATemplates` on
+  `U01PARVMPKI02` (§7 step 10).
+- `U01PARVMNDS01$` has both **Read** and **Enroll** on the template's Security tab (§7 step 8) — not just
+  one of the two, and not a group that doesn't actually include the computer account.
+- The console is scoped to **Computer account**, not **My user account** (step 1 above) — the single most
+  common reason the template silently doesn't show up even when everything above is correct.
 
 The certificate lands in `Cert:\LocalMachine\My` — this enrollment path doesn't reliably set a friendly
 name, so give it one: find it (Subject `u01parvmnds01.corp.unreadlines.com`, issued by `UnreadLines
@@ -253,9 +312,10 @@ Issuing CA`), right-click → **Properties** → **General** tab → **Friendly 
 Authentication`. This is what makes it easy to pick out in the IIS binding dropdown below, rather than
 having to recognize it by expiry date among any other certificates on this store.
 
-Create the HTTPS binding, then attach the certificate through IIS Manager rather than PowerShell's
-`AddSslCertificate` — that method frequently fails on this exact step with `A specified logon session
-does not exist (0x80070520)`, a known COM/CNG quirk unrelated to anything specific to this lab:
+Create the HTTPS binding, then attach the certificate through IIS Manager (site → **Bindings…** → **Add**
+or **Edit** the `https`/`443` binding) rather than PowerShell's `AddSslCertificate` — that method
+frequently fails on this exact step with `A specified logon session does not exist (0x80070520)`, a known
+COM/CNG quirk unrelated to anything specific to this lab:
 
 ```powershell
 New-WebBinding -Name "Default Web Site" -Protocol https -Port 443 -IPAddress "*"
