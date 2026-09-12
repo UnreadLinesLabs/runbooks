@@ -168,10 +168,11 @@ template gives it its own certificate so the internal hop stays HTTPS too.
 
 1. `certtmpl.msc` → right-click the built-in `Web Server` template → **Duplicate Template**.
 
-2. **Compatibility tab — leave the wizard's default.** Unlike the SCEP template in
-   `ndes-scep-intune-connector` (§6 there), which needs a Legacy CSP because NDES itself requires it,
-   this certificate only has to bind to IIS for a normal TLS handshake — the modern Key Storage Provider
-   the wizard defaults to works fine here. Nothing to change on this tab.
+2. **Compatibility tab — leave the wizard's default.** `Web Server`'s own built-in Compatibility level
+   (`Windows Server 2003` / `Windows XP/Server 2003`) is what the duplication wizard starts from, the
+   same floor `ndes-scep-intune-connector` (§6 there) had to force its SCEP template back down to. Here
+   there's nothing to force — it's already where it needs to be, and it lands on Legacy CSP either way
+   (confirmed on the Cryptography tab, step 7 below).
 
 3. **General tab:**
 
@@ -192,20 +193,24 @@ template gives it its own certificate so the internal hop stays HTTPS too.
    identity to a browser or to Application Proxy. This is the opposite case from the SCEP template, which
    had to swap this same built-in EKU out for Client Authentication.
 
-6. **Request Handling tab — nothing to change.** `Web Server`'s default (`Purpose: Encryption`, private
-   key not exportable) is exactly what a normal HTTPS binding needs for the TLS key exchange — the SCEP
-   template narrowed this to `Signature` only because a client-auth certificate never decrypts anything;
-   this one does, so the default stays.
+6. **Request Handling tab — nothing to change.** `Web Server`'s default (`Purpose: Signature and
+   encryption`, private key not exportable) is exactly what a normal HTTPS binding needs — it supports
+   both the RSA key-exchange cipher suites (encryption) and the signature-based ones (ECDHE), unlike the
+   SCEP template, which narrowed this to `Signature` only because a client-auth certificate never
+   decrypts anything. Leave **Allow private key to be exported** unchecked.
 
 7. **Cryptography tab — confirm, don't just glance at it:**
 
    ```text
-   Provider Category   : Key Storage Provider
+   Provider Category   : Legacy Cryptographic Service Provider
+   Providers           : Microsoft RSA SChannel Cryptographic Provider ✓ (checked)
    Minimum key size     : 2048
    ```
 
-   If this shows **Legacy Cryptographic Service Provider** instead, the Compatibility tab (step 2) was
-   changed by mistake — go back and confirm it's still at the wizard's own default.
+   Legacy CSP is correct and expected here — `Microsoft RSA SChannel Cryptographic Provider` is the
+   standard provider IIS/Schannel itself uses for a TLS server certificate, not a compromise. If this
+   tab instead shows **Key Storage Provider**, the Compatibility tab (step 2) was raised above `Web
+   Server`'s own default — go back and confirm it's still unchanged.
 
 8. **Security tab — remove the broad default, grant only the account that needs it:**
 
@@ -225,25 +230,41 @@ template gives it its own certificate so the internal hop stays HTTPS too.
 
 ## 8. Enroll the certificate and bind it to IIS — on `U01PARVMNDS01`
 
-In **IIS Manager**, select the server node, then **Server Certificates → Create Domain Certificate**. This
-wizard requests directly against `U01PARVMPKI02` using whichever published template the server's computer
-account can enroll for — with §7 published and scoped to `U01PARVMNDS01$` alone, it resolves to `NDES
-Server Authentication` without having to name it explicitly. Enter:
+IIS Manager's own **Server Certificates → Create Domain Certificate** wizard is unreliable for this step
+— in practice it can leave **Select** permanently greyed out on the Online Certification Authority screen,
+and typing the CA path manually there can fail with `No such host is known` even though the server
+resolves that same name fine everywhere else. Use the standard certificate MMC instead, which discovers
+the CA through Active Directory rather than a typed hostname:
 
-- **Common name**: `u01parvmnds01.corp.unreadlines.com`
-- **Organization** / **Organizational unit** / **City** / **State** / **Country**: any value — the
-  Subject Name tab is display-only for this template (§7); nothing here changes what the certificate
-  authorizes.
+1. `certlm.msc` (Certificates - Local Computer).
+2. **Personal** → right-click → **All Tasks → Request New Certificate...**
+3. **Next** → **Next** (Active Directory Enrollment Policy).
+4. Check **NDES Server Authentication** in the list — it appears automatically because `U01PARVMNDS01$`
+   has `Read` + `Enroll` on it (§7). A note reading *"More information is required to enroll for this
+   certificate"* appears under it — this is expected, since the template's Subject Name is *Supply in the
+   request* (§7):
+   - Click the note → **Subject** tab → **Type: Common name**, **Value**:
+     `u01parvmnds01.corp.unreadlines.com` → **Add** → **OK**.
+5. **Enroll** → **Finish**.
 
-Bind it to the default site:
+The certificate lands in `Cert:\LocalMachine\My` — this enrollment path doesn't reliably set a friendly
+name, so give it one: find it (Subject `u01parvmnds01.corp.unreadlines.com`, issued by `UnreadLines
+Issuing CA`), right-click → **Properties** → **General** tab → **Friendly name**: `NDES Server
+Authentication`. This is what makes it easy to pick out in the IIS binding dropdown below, rather than
+having to recognize it by expiry date among any other certificates on this store.
+
+Create the HTTPS binding, then attach the certificate through IIS Manager rather than PowerShell's
+`AddSslCertificate` — that method frequently fails on this exact step with `A specified logon session
+does not exist (0x80070520)`, a known COM/CNG quirk unrelated to anything specific to this lab:
 
 ```powershell
-$cert = Get-ChildItem Cert:\LocalMachine\My |
-    Where-Object { $_.Subject -like "*u01parvmnds01.corp.unreadlines.com*" }
-
 New-WebBinding -Name "Default Web Site" -Protocol https -Port 443 -IPAddress "*"
-(Get-WebBinding -Name "Default Web Site" -Protocol https).AddSslCertificate($cert.Thumbprint, "My")
 ```
+
+**In IIS Manager:** `Default Web Site` → **Bindings...** → select the `https`/`443` binding just created →
+**Edit...** → **SSL certificate**: choose `NDES Server Authentication` (the friendly name from above) →
+**OK**. This binds the certificate through the same in-process path IIS Manager always uses, sidestepping
+whatever breaks the PowerShell method.
 
 Confirm the SCEP endpoint now answers over HTTPS internally, from `U01PARVMNDS01` itself:
 
