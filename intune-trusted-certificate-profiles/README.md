@@ -422,11 +422,12 @@ right store, assigned to the right dynamic group.
 ## 12. Next step — Intune SCEP profile
 
 These eight Trusted certificate profiles only make devices trust the UnreadLines CA hierarchy — none of
-them hand a device a certificate it can prove its own identity with. That is item 8 of the chain
+them hand a device a certificate it can prove its own identity with. That is item 7 of the chain
 described in `nps-server-certificate-deployment/README.md` §3: an Intune SCEP profile, backed by NDES
-and the Intune Certificate Connector (items 4–5 of that same chain, also not yet built), issuing a client
-authentication certificate to each device permitted onto `UnreadLines-Mobile`. Nothing further down that
-chain can be deployed correctly until this runbook's trust relationship exists first.
+and the Intune Certificate Connector (items 4–5 of that same chain, now built and published), issuing a
+client authentication certificate to each device permitted onto `UnreadLines-Mobile` —
+`intune-scep-certificate-profile/README.md`. Nothing further down that chain can be deployed correctly
+until this runbook's trust relationship exists first.
 
 ## 13. References
 
