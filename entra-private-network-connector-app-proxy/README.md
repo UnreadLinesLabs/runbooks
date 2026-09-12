@@ -385,15 +385,20 @@ anything published against it.
 
 ## 11. Publish NDES through Application Proxy — in the Entra admin center
 
-1. **Enterprise applications → New application → On-premises application.**
+1. **Enterprise applications → New application → Add an on-premises application** (there is no separate
+   "On-premises application" tile to click first — this button on the New application page opens the
+   form directly). If that button isn't there, use the alternate path instead: **Create your own
+   application** → **Configure Application Proxy for secure remote access to an on-premises application**.
 2. **Name**: `App Proxy - NDES SCEP - Mobile` (§4).
 3. **Internal URL**: the root URL of `U01PARVMNDS01`, e.g. `https://u01parvmnds01.corp.unreadlines.com/`
    — the NDES root, not a sub-path. Microsoft's own procedure for this exact scenario publishes the
    root; this screen has no option to publish only a sub-path (the limitation the intro above already
    notes — §12 is where it's actually addressed).
 4. **External URL**: leave the tenant default (`*.msappproxy.net`) — no custom domain configured.
-5. **Pre-authentication**: **Passthrough**. Not selectable as anything else for this app — SCEP cannot
-   complete any interactive sign-in step.
+5. **Pre Authentication**: change the dropdown from its default (**Microsoft Entra ID**) to
+   **Passthrough** — it does not default to this, so it has to be picked explicitly. Passthrough is the
+   only mode that actually works for this app: SCEP cannot complete an interactive sign-in step, so
+   leaving the default in place would make the published endpoint unreachable by any real SCEP client.
 6. **Connector group**: default (`U00PARVMPNC01` is currently the only connector).
 7. Save, then copy the generated external URL — needed for §13 and for the Intune SCEP profile in the
    next lab (§16).
